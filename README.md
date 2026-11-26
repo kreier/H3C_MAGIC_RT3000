@@ -4,7 +4,10 @@ Updated firmware for the H3C Magic RT3000 HW-B from China Mobile to OpenWRT 21.0
 
 ## OpenWRT 21.02.7 based on QSDK 11.5 with Hardware acceleration
 
-Go here: [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
+Go here: 
+
+- [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
+- [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot)
 
 ## Original Firmware
 

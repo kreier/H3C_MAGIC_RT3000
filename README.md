@@ -332,23 +332,27 @@ Always verify the `.ubi` file's `sha256sum` against the release notes before fla
 ### 6. Flash OpenWrt 21.02.7 via the U-Boot Web Rescue Page
 
 1. **Enter the U-Boot Web Rescue Page:**
+   - **Unplug all other cables** (especially **WAN**) and connect **a single Ethernet cable** between your PC and **LAN1** on the RT3000. *(On HW-B, `ethrotate=no` is not pinned in U-Boot, so having WAN connected or multiple slow-negotiating links can cause U-Boot to rotate away from LAN `eth1` during the 3-second link-settle window.)*
    - Unplug power from the RT3000.
-   - Hold down the **Reset** button (or the **Mesh/WPS** button on U-Boot `v0.1.0+`, which is easier to press).
-   - Plug power back in while holding the button.
-   - Watch the red LED blink once per second: **release after the 3rd red flash** (the LED turns solid green).
-2. **Open the rescue interface from `192.168.10.3`:**
-   - Ensure `192.168.10.3` is wired directly to a **LAN** port on the RT3000 (your static `192.168.10.3/24` address is already in the right subnet; U-Boot also runs a DHCP server handing out `192.168.10.100`–`192.168.10.200`).
-   - Open `http://192.168.10.1` in your browser.
+   - Hold down the **RESET** button *(note: on **HW-B**, only **RESET** triggers recovery; WPS/MESH is status-only)*.
+   - Plug power back in while holding **RESET**.
+   - Watch the red LED blink once per second: keep holding through the **3rd red flash until the LED turns solid green**, then release **RESET**.
+2. **Open the rescue interface (`http://192.168.10.1`):**
+   - If your PC does not receive a DHCP address (`192.168.10.100`–`192.168.10.200`), assign a static IP on that Ethernet adapter — e.g., **`192.168.10.2`**, subnet mask **`255.255.255.0`**, leaving gateway and DNS blank (on Windows admin CMD: `netsh interface ip set address name="Ethernet" static 192.168.10.2 255.255.255.0`).
+   - Open **`http://192.168.10.1`** in your browser (`http://`, not `https://`).
+   - > [!TIP]
+     > **Blank white page with only a green/teal bar at the top?** Your browser may be serving cached files from the old H3C web UI (also on `192.168.10.1`) or stalling `/main.js` over parallel requests. Open an **Incognito / InPrivate** window, visit **`http://192.168.10.1/main.js`** once so it finishes loading cleanly, and then open **`http://192.168.10.1/`**.
 3. **Check System Info:**
-   - Verify the reported **Hardware Family** (e.g. `HW-B`), detected **NAND model / ECC**, and **5 GHz FEM** status.
-   - Confirm that the firmware `.ubi` file you extracted matches the displayed **Hardware Family**.
+   - Verify the reported **Hardware Family** (e.g. `HW-B`), detected **NAND model / ECC** (e.g. `GD5F1GQ5REYIG`, ECC Strength `8`), and **5 GHz FEM (ART)** (`none → HW-B`).
+   - Confirm that the firmware `.ubi` file matches the displayed **Hardware Family**.
 4. **Flash OpenWrt into the Second System Slot (Dual-Boot):**
    - Go to **Firmware Update** on the rescue page.
-   - Select the slot that does **not** contain the stock firmware (slots are shown by offset: Slot 1 = `0x900000`, Slot 2 = `0x3100000`; stock is normally in Slot 1, so select **Slot 2 / `0x3100000`**).
-   - Upload `H3C-Magic-r14-HW-B-nand-factory.ubi` (your extracted `*-nand-factory.ubi` file) and wait for write + verification to complete.
+   - Select **Slot 2 (`rootfs_1`, `0x3100000`)** so **Slot 1 (`rootfs`, `0x900000`)** preserves your stock H3C firmware. *(On a fresh RT3000, both slots initially hold stock Chaos Calmer 15.05.1.)*
+   - Upload `H3C-Magic-r14-HW-B-nand-factory.ubi` (or the latest `r<N>` `.ubi` file) and wait for write + verification to complete.
    - *(Optional: if you do **not** want to keep the stock H3C firmware and need extra flash space for large packages like OpenClash/PassWall/Tailscale, you can merge both slots into a single **80 MiB** partition on the rescue page's partition-table tab before flashing `.ubi`. This erases the stock system.)*
 5. **Set Default Boot Slot & Reboot:**
-   - On the rescue page overview, set the newly flashed OpenWrt slot as the **Default Boot** slot and reboot / power-cycle the router.
+   - Return to **System Info**, click **Set as default** under **`rootfs_1` (Physical slot 2)**, and reboot from the sidebar.
+   - Switch your PC's Ethernet adapter back to DHCP (`netsh interface ip set address name="Ethernet" dhcp` on Windows).
 
 ---
 
@@ -368,24 +372,28 @@ ssh root@192.168.10.1
 passwd
 ```
 
-Then open LuCI (`http://192.168.10.1/`) to:
-1. Change the Wi-Fi SSIDs, WPA2/WPA3 passwords, and regulatory country code.
-2. Verify WAN/LAN connectivity and NSS hardware offload (`940 Mbps` wired NAT).
+Then open LuCI (`http://192.168.10.1/`, Argon theme) to:
+1. **Switch UI language from Chinese to English:** go to **System → System → System Properties → Language and Style** (*系统 → 系统 → 语言和界面*) and set Language to **`auto`** (or **English**), then **Save & Apply**.
+2. Change the Wi-Fi SSIDs, passwords, encryption, and regulatory country code under **Network → Wireless**.
+3. Reconnect your upstream Ethernet cable to the **WAN** port and verify WAN/LAN connectivity and NSS hardware offload (`~940 Mbps` wired NAT).
 
 #### Switching Between OpenWrt and Stock Firmware (Dual-Boot)
 
-With U-Boot `v0.1.0+` / `v0.2.0+`, you can switch slots without a PC by holding **Reset** or **Mesh/WPS** while powering on:
+With U-Boot `v0.1.0+` / `v0.2.0+`, you can switch slots without a PC by holding **RESET** while powering on *(on HW-A/HW-D, Mesh/WPS also works; on HW-B/HW-C, use **RESET**)*:
 
 | Release Timing (Red LED) | Action |
 |---|---|
 | Before 1st flash | Normal boot of default slot |
-| After **1st** flash | Boot **Slot 1** (`0x900000`, typically stock) and set as default |
-| After **2nd** flash | Boot **Slot 2** (`0x3100000`, typically OpenWrt) and set as default |
+| After **1st** flash | Boot **Slot 1** (`rootfs`, `0x900000`, stock) and set as default |
+| After **2nd** flash | Boot **Slot 2** (`rootfs_1`, `0x3100000`, OpenWrt) and set as default |
 | After **3rd** flash | Enter **Web Rescue Page** (`http://192.168.10.1`) |
 
 #### Future OpenWrt Upgrades
 
-Once OpenWrt 21.02.7 is running, upgrade future releases via LuCI (**System → Backup / Flash Firmware**) using the `*-sysupgrade.bin` image (settings can be preserved; `r14` also supports **Online Update** in LuCI).
+| Method | File to Use | Keeps Settings? | Best For |
+|---|---|---|---|
+| **Inside OpenWrt (LuCI)**<br>*System → Backup / Flash Firmware* | `H3C-Magic-r<N>-HW-B-sysupgrade.bin` *(or `r14`'s built-in **Online update**)* | **Yes** (with "Keep settings") | Routine upgrades to future `r15+` QSDK releases in your active 40 MiB slot without touching Slot 1 (stock). |
+| **U-Boot Web Rescue Page**<br>*(Hold RESET for 3 red flashes → `http://192.168.10.1`)* | `*-nand-factory.ubi` | **No** (clean flash of selected slot) | Clean reinstalls, recovery, or testing another firmware family (e.g. mainline OpenWrt 24.10) in Slot 2. |
 
 ---
 

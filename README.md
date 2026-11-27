@@ -9,7 +9,98 @@ Go here:
 - [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
 - [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot)
 
+The steps are:
+
+### 1. Activate telnet
+
+Download the current firmware by login into the router, on the bottom you have two bottons:
+
+- 简化版 (Basic Mode) — currently selected (grayed out)
+- 专业版 (Pro/Advanced Mode) — select this one
+
+On the left side in the menu, click the lowest button 设备管理 — Device Management. On the right side you have four tabs, the left one is active with 配置管理 — Configuration Management. Below you have 3 separate areas:
+
+- 备份系统设置信息 — Backup System Settings
+  - Button: 备份 (Backup) — This will download the plaintext configuration file RT3000.cfg
+- 从文件中恢复设置信息 — Restore Settings from File
+   - Button: 恢复 (Restore) — You will have to upload the fixed configuration here later
+- 恢复到出厂设置 — Restore Factory Defaults
+  - Button: 复原 (Factory Reset)
+
+Download the RT3000.cfg and change line 31 to **enable** telnet, so it reads:
+
+```cfg
+@telnet
+#
+	telnetenable=enable
+```
+
+You can then login into the router over telnet to the IP of the router on port 23 with `telnet 192.168.10.1 23`. You get the message:
+
+```
+Connected to 192.168.10.1.
+Escape character is '^]'.
+
+ === IMPORTANT ============================
+  Use 'passwd' to set your login password!
+ ------------------------------------------
+
+**************************************************************************
+*    Copyright (c) 2004-2022 New H3C Technologies Co.,Ltd.               *
+*    All rights Reserved.                                                *
+*    Without the owner's prior written consent,                          *
+*    no decompiling or reverse-engineering shall be allowed.             *
+**************************************************************************
+
+<H3C_RT3000>debugshell
+```
+You have to enter `debugshell` to enter the shell. You will be greeted by the old QSDK 4.4:
+
+```
+<H3C_RT3000>debugshell
+
+
+BusyBox v1.30.1 () built-in shell (ash)
+
+     MM           NM                    MMMMMMM          M       M
+   $MMMMM        MMMMM                MMMMMMMMMMM      MMM     MMM
+  MMMMMMMM     MM MMMMM.              MMMMM:MMMMMM:   MMMM   MMMMM
+MMMM= MMMMMM  MMM   MMMM       MMMMM   MMMM  MMMMMM   MMMM  MMMMM'
+MMMM=  MMMMM MMMM    MM       MMMMM    MMMM    MMMM   MMMMNMMMMM
+MMMM=   MMMM  MMMMM          MMMMM     MMMM    MMMM   MMMMMMMM
+MMMM=   MMMM   MMMMMM       MMMMM      MMMM    MMMM   MMMMMMMMM
+MMMM=   MMMM     MMMMM,    NMMMMMMMM   MMMM    MMMM   MMMMMMMMMMM
+MMMM=   MMMM      MMMMMM   MMMMMMMM    MMMM    MMMM   MMMM  MMMMMM
+MMMM=   MMMM   MM    MMMM    MMMM      MMMM    MMMM   MMMM    MMMM
+MMMM$ ,MMMMM  MMMMM  MMMM    MMM       MMMM   MMMMM   MMMM    MMMM
+  MMMMMMM:      MMMMMMM     M         MMMMMMMMMMMM  MMMMMMM MMMMMMM
+    MMMMMM       MMMMN     M           MMMMMMMMM      MMMM    MMMM
+     MMMM          M                    MMMMMMM        M       M
+       M
+ ---------------------------------------------------------------
+   For those about to rock... (Chaos Calmer, unknown)
+ ---------------------------------------------------------------
+root@OpenWrt:/#
+```
+
+### Determine your hardware version and flash type
+
+Next you get more information of the specifics of your machine. Enter
+
+```
+cat /proc/cpuinfo
+dmesg | grep -iE "ipq|nand|spi|switch|qca|rtl"
+cat /proc/mtd
+fw_printenv
+```
+
+You need the correct firmware and flashchip to later write the correct image.
+
+To be continued ...
+
 ## Original Firmware
+
+![screenshot](docs/landing_page.jpg)
 
 ### 基本信息
 ```

@@ -1,13 +1,20 @@
 # H3C_MAGIC_RT3000
 
-Updated firmware for the H3C Magic RT3000 HW-B from China Mobile to OpenWRT 21.02.7 QSDK 11.5
+Updated firmware for the H3C Magic RT3000 HW-B from China Telecom to OpenWRT 21.02.7 QSDK 11.5
 
 ## OpenWRT 21.02.7 based on QSDK 11.5 with Hardware acceleration
 
-Go here: 
+Upstream repositories:
 
-- [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
-- [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot)
+- OpenWrt 21.02.7 / QSDK 11.5 firmware: [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
+- U-Boot (v0.1.0, per-NAND images & BootBridge): [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot)
+- U-Boot successor (v0.2.0+, auto-detects NAND/ECC at boot): [https://github.com/FlyFish-go/IPQ50XX-Uboot](https://github.com/FlyFish-go/IPQ50XX-Uboot)
+
+### Network Setup Used in This Guide
+
+- **Router (H3C Magic RT3000):** `192.168.10.1` (connect your PC via Ethernet to a **LAN** port — both the U-Boot rescue page and OpenWrt LuCI bind to LAN).
+- **Linux helper machine:** `192.168.10.3` on the same LAN (`192.168.10.0/24`).
+- **Helper automation script:** [`scripts/rt3000_helper.py`](scripts/rt3000_helper.py) (runs on `192.168.10.3`, pure Python 3 stdlib — automates hardware/NAND detection, MTD backups, and serving firmware files).
 
 The steps are:
 
@@ -83,20 +90,323 @@ MMMM$ ,MMMMM  MMMMM  MMMM    MMM       MMMM   MMMMM   MMMM    MMMM
 root@OpenWrt:/#
 ```
 
-### Determine your hardware version and flash type
+### 2. Determine Your Hardware Group and Flash Chip (NAND + ECC)
 
-Next you get more information of the specifics of your machine. Enter
+> [!IMPORTANT]
+> The H3C Magic RT3000 shipped with **multiple different PCBs** (`HW-A`, `HW-B`, `HW-C`) and **21 different SPI NAND + ECC combinations**. The web UI string `VER.A` and the sticker on the case (`D0` / `B0` / `C1`) do **not** reliably identify the board or NAND chip. Flashing the wrong board group or wrong NAND/ECC bootloader can brick the router (requiring a UART/TTL serial adapter to recover).
 
-```
-cat /proc/cpuinfo
-dmesg | grep -iE "ipq|nand|spi|switch|qca|rtl"
+Inside `debugshell` (`root@OpenWrt:/#`), run the following **read-only** commands (or run `python3 scripts/rt3000_helper.py probe` from `192.168.10.3` to automate this entire check):
+
+```sh
+# 1. Kernel, device tree model, and MTD partition layout
+uname -a
+cat /proc/device-tree/model; echo
 cat /proc/mtd
 fw_printenv
+
+# 2. Board machid from 0:CDT (mtd8) and 5 GHz FEM flag from 0:ART (mtd13)
+dd if=/dev/mtd8 bs=64 count=1 2>/dev/null | hexdump -C
+dd if=/dev/mtd13 bs=1 skip=$((0x26800)) count=80 2>/dev/null | hexdump -C
+
+# 3. NAND Manufacturer ID, Chip ID, model, page/OOB size, and ECC strength
+dmesg | grep -iE "nand:|spi|mtd|ipq|switch|qca|rtl"
+for f in name writesize erasesize oobsize ecc_strength; do
+    printf "%-14s: %s\n" "$f" "$(cat /sys/class/mtd/mtd0/$f 2>/dev/null)"
+done
 ```
 
-You need the correct firmware and flashchip to later write the correct image.
+#### 2.1 Identify Your Hardware Group (`HW-A` / `HW-B` / `HW-C` / `HW-D`)
 
-To be continued ...
+Inspect `/proc/device-tree/model`, the 5-byte platform tuple in `0:CDT` (`mtd8`) at offset `0x1a` (`02 <platform> <ver> <sub_hi> <sub_lo>`), and—if `machid` is `0x08040000`—the 5 GHz calibration header in `0:ART` (`mtd13`) at offset `0x26800`:
+
+| Hardware Group | Device Tree / FDT | CDT Tuple (`0x1a..0x1e`) → `machid` | SoC & Switch | `0:ART` @ `0x26800` (`+0x00`, `+0x3a`, `+0x45`) |
+|---|---|---|---|---|
+| **HW-A** | `AP-MP03.1` | `02 08 04 00 01` → `0x08040001` | IPQ5018 + QCA8337 | — |
+| **HW-B** | `AP-MP02.1` | `02 08 04 00 00` → `0x08040000` | IPQ5000 + QCA8337 | `01 00 04 04`, `0x50`, `0x01` (no external 5 GHz FEM) |
+| **HW-C** | `AP-MP03.1-C2` | `02 08 04 01 01` → `0x08040101` | IPQ5018 + RTL8367S | — |
+| **HW-D** | `AP-MP02.1` | `02 08 04 00 00` → `0x08040000` | IPQ5000 + QCA8337 | `01 00 04 04`, `0x60`, `0x09` (external 5 GHz FEM, e.g. NX30) |
+
+For this repository's router (verified from [`firmware/old_firmware.7z`](firmware/old_firmware.7z)):
+- `0:CDT` tuple is `02 08 04 00 00` → `machid = 0x08040000` (`AP-MP02.1`).
+- `0:ART` at `0x26800` has header `01 00 04 04`, `+0x3a = 0x50`, `+0x45 = 0x01` → **no external 5 GHz FEM → `HW-B`**.
+
+#### 2.2 Identify Your NAND Flash Chip & ECC Mode
+
+In the `dmesg` output, look for the three `nand:` lines:
+
+```text
+nand: device found, Manufacturer ID: 0xc8, Chip ID: 0x41
+nand: GigaDevice GD5F1GQ5REYIG SPI NAND 128MiB 1.8V 8-bit
+nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 128
+```
+
+And check the sysfs attributes on `mtd0`:
+- `oobsize` (`64` or `128`)
+- `ecc_strength` (`4` or `8`)
+
+> [!WARNING]
+> Two flash chips—`GD5F1GQ5REYIG` (`c8:41`) and `FM25LS01` (`a1:a5`)—exist in **both `ECC4` and `ECC8`** configurations. Always verify `ecc_strength` (and `oobsize`) from `/sys/class/mtd/mtd0/`; never guess by chip name alone.
+
+Match your **Manufacturer:Chip ID**, **Model**, **OOB size**, and **ECC strength** against the 21 builds published in [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0) (`uboot-v0.1.0-HW-<X>.zip`):
+
+| Mfr:Chip ID | NAND Model | Size / Page / OOB | ECC | Folder inside `uboot-v0.1.0-HW-<X>.zip` |
+|---|---|---|---|---|
+| `2c:15` | Micron `MT29F1G01ABBFDWB-IT` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/MT29F1G01ABBFDWB-IT-ECC8/appsbl.mbn` |
+| `98:d2` | Kioxia/Toshiba `TC58CYG0S3HRAIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/TC58CYG0S3HRAIG-ECC8/appsbl.mbn` |
+| `98:db` | Kioxia/Toshiba `TC58CYG1S3HRAIJ` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/TC58CYG1S3HRAIJ-ECC4/appsbl.mbn` |
+| `a1:a5` | Fudan `FM25LS01` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/FM25LS01-ECC4/appsbl.mbn` |
+| `a1:a5` | Fudan `FM25LS01` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/FM25LS01-ECC8/appsbl.mbn` |
+| `c2:92` | Macronix `MX35UF1GE4AC` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/MX35UF1GE4AC-ECC4/appsbl.mbn` |
+| `c8:11` | ESMT `F50D1G41LB(2M)` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/F50D1G41LB-2M-ECC4/appsbl.mbn` |
+| `c8:21` | GigaDevice `GD5F1GQ5REYIH` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F1GQ5REYIH-ECC4/appsbl.mbn` |
+| `c8:22` | GigaDevice `GD5F2GQ5REYIH` | 256 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F2GQ5REYIH-ECC4/appsbl.mbn` |
+| `c8:41` | GigaDevice `GD5F1GQ5REYIG` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/GD5F1GQ5REYIG-ECC4/appsbl.mbn` |
+| `c8:41` | GigaDevice `GD5F1GQ5REYIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GQ5REYIG-ECC8/appsbl.mbn` |
+| `c8:45` | GigaDevice `GD5F4GQ6REYIGY` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/GD5F4GQ6REYIGY-ECC4/appsbl.mbn` |
+| `c8:81` | GigaDevice `GD5F1GM7REYIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GM7REYIG-ECC8/appsbl.mbn` |
+| `c8:c1` | GigaDevice `GD5F1GQ4RE9IG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GQ4RE9IG-ECC8/appsbl.mbn` |
+| `c8:c9` | GigaDevice `GD5F1GQ4RE9IH` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F1GQ4RE9IH-ECC4/appsbl.mbn` |
+| `e5:21` | Dosilicon `DS35M1GA-IB` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/DS35M1GA-IB-ECC4/appsbl.mbn` |
+| `e5:72` | Dosilicon `DS35Q2GA` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/DS35Q2GA-ECC4/appsbl.mbn` |
+| `e5:a4` | Dosilicon `DS35M4GM` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/DS35M4GM-ECC8/appsbl.mbn` |
+| `ef:ba` | Winbond `W25N01GWZEIG` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N01GWZEIG-ECC4/appsbl.mbn` |
+| `ef:bc` | Winbond `W25N01JW` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N01JW-ECC4/appsbl.mbn` |
+| `ef:bf` | Winbond `W25N02JWZEIF` | 256 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N02JWZEIF-ECC4/appsbl.mbn` |
+
+> [!TIP]
+> **Simpler alternative (`IPQ50XX-Uboot` v0.2.0+):** Development of `H3C-NX30-Uboot` moved to [`FlyFish-go/IPQ50XX-Uboot`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0). Starting with **v0.2.0**, there is only **one U-Boot file per hardware group** (`h3c-hw-a.mbn`, `h3c-hw-b.mbn`, `h3c-hw-c.mbn`, `h3c-hw-d.mbn`) because U-Boot auto-detects the NAND chip and ECC mode at boot. You still must verify your exact Hardware Group (`HW-B`, etc.) and check that your NAND chip is supported in the table above.
+
+---
+
+### 3. Back Up All Original Partitions to `192.168.10.3`
+
+Before modifying U-Boot or any system partition, dump `mtd0` through `mtd15` from the router to your Linux machine (`192.168.10.3`). Keep the backup locally and privately—it contains your unit's unique Wi-Fi calibration data (`0:ART`), MAC addresses, and serial number.
+
+> If you already dumped `mtd0`–`mtd15` into [`firmware/old_firmware.7z`](firmware/old_firmware.7z) and verified `md5sums.txt`, you already have this backup!
+
+**Automated backup from `192.168.10.3`:**
+
+```bash
+python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z
+```
+
+**Manual backup (streaming `mtd15` without filling the router's RAM `/tmp`):**
+
+On the Linux machine (`192.168.10.3`):
+
+```bash
+nc -l -p 9000 > mtd15_rootfs.bin
+```
+
+On the router (`192.168.10.1` in `debugshell`):
+
+```sh
+dd if=/dev/mtd15 bs=4096 | nc 192.168.10.3 9000
+dd if=/dev/mtd15 bs=4096 | md5sum
+```
+
+Verify that `mtd15_rootfs.bin` on `192.168.10.3` is exactly `41943040` bytes (40 MiB) and its `md5sum` matches the router's output. Repeat for `mtd0`–`mtd14` (especially `mtd0` `0:SBL1`, `mtd1` `0:MIBIB`, `mtd2`/`mtd3` `0:BOOTCONFIG*`, `mtd8` `0:CDT`, `mtd10` `0:APPSBLENV`, `mtd11`/`mtd12` `0:APPSBL*`, and `mtd13` `0:ART`).
+
+---
+
+### 4. Install the Replacement U-Boot
+
+You have two ways to install U-Boot. **Do NOT upload `appsbl.mbn` directly to the stock H3C web UI firmware upgrade page**—the stock web UI only accepts signed vendor upgrade packages.
+
+#### Option A: Direct Flash via Telnet + Linux Machine (`192.168.10.3`)
+
+Use this path when Telnet (`debugshell`) is already active on `RT3000V100R005L01` and you do not want to upgrade stock firmware to `RT3000V100R015` first.
+
+1. **Download and verify U-Boot on `192.168.10.3`:**
+   - From [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0): download `uboot-v0.1.0-HW-B.zip` (replace `HW-B` with your detected group) and `SHA256SUMS.txt`, extract the exact `HW-B/<NAND-MODEL>-ECC<4|8>/appsbl.mbn` matched in Step 2.2, and verify its SHA-256.
+   - *(Or from [`IPQ50XX-Uboot` `v0.2.0`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0): download `h3c-hw-b.mbn` and verify against `SHA256SUMS`.)*
+
+2. **Serve the U-Boot image from `192.168.10.3`:**
+   Put **only** the verified U-Boot file (renamed or copied as `appsbl.mbn`) into a clean staging folder (e.g. `~/rt3000-stage`) and start a temporary HTTP server (or run `python3 scripts/rt3000_helper.py serve ~/rt3000-stage --local-ip 192.168.10.3`):
+
+   ```bash
+   cd ~/rt3000-stage
+   sha256sum appsbl.mbn
+   python3 -m http.server 8899 --bind 192.168.10.3
+   ```
+
+3. **Download and verify on the router (`debugshell`):**
+
+   ```sh
+   cd /tmp
+   wget http://192.168.10.3:8899/appsbl.mbn -O /tmp/appsbl.mbn
+   sha256sum /tmp/appsbl.mbn
+   ls -l /tmp/appsbl.mbn
+   ```
+
+   **Stop immediately** if the SHA-256 does not match the upstream `SHA256SUMS` and your Linux host's `sha256sum`.
+
+4. **Pre-flash safety checks on the router (`debugshell`):**
+
+   Confirm that `mtd11` and `mtd12` are `0:APPSBL` and `0:APPSBL_1` (each `0x00140000` = 1,310,720 bytes, erase size `0x00020000`), have **0 bad blocks**, and check which flash utility is installed:
+
+   ```sh
+   cat /proc/mtd | grep -E "mtd11|mtd12"
+   # Expected:
+   # mtd11: 00140000 00020000 "0:APPSBL"
+   # mtd12: 00140000 00020000 "0:APPSBL_1"
+
+   cat /sys/class/mtd/mtd11/bad_blocks /sys/class/mtd/mtd12/bad_blocks
+   # Expected: 0 and 0
+
+   which mtd flash_erase nandwrite
+   ```
+
+   > [!CAUTION]
+   > - **Never use `dd` to write to NAND `/dev/mtd*`!** Always use `mtd write` or `flash_erase` + `nandwrite -p`.
+   > - If either `mtd11` or `mtd12` has a non-zero `bad_blocks` count, or their names/sizes differ from `00140000`, **stop** and do not flash.
+   > - Always write the **inactive/backup copy (`mtd12` / `0:APPSBL_1`) first** and verify its readback SHA-256 **before** touching the active copy (`mtd11` / `0:APPSBL`). That way, if writing fails, your active bootloader is still intact. (Verify `0:APPSBL` selector is `0` first via `rt3000_helper.py probe`; if selector is `1`, swap the order and write `mtd11` first.)
+
+5. **Write backup copy (`mtd12` / `0:APPSBL_1`) and verify readback:**
+
+   ```sh
+   SIZE=$(wc -c < /tmp/appsbl.mbn)
+
+   # Using OpenWrt mtd (standard on stock QSDK 4.4):
+   mtd write /tmp/appsbl.mbn /dev/mtd12
+   # (Alternatively, if mtd is absent and mtd-utils is present:
+   #  flash_erase /dev/mtd12 0 0 && nandwrite -p /dev/mtd12 /tmp/appsbl.mbn)
+
+   # Read back exact image size and compare SHA-256:
+   dd if=/dev/mtd12 bs=1 count="$SIZE" 2>/dev/null | sha256sum
+   sha256sum /tmp/appsbl.mbn
+   ```
+
+   **Only proceed if both SHA-256 hashes are 100% identical.**
+
+6. **Write active copy (`mtd11` / `0:APPSBL`) and verify readback:**
+
+   ```sh
+   mtd write /tmp/appsbl.mbn /dev/mtd11
+
+   dd if=/dev/mtd11 bs=1 count="$SIZE" 2>/dev/null | sha256sum
+   sha256sum /tmp/appsbl.mbn
+   ```
+
+   Once **both** `mtd11` and `mtd12` pass readback SHA-256 verification (and `0:APPSBLENV` / `mtd10` has not been touched), sync and reboot:
+
+   ```sh
+   sync
+   reboot
+   ```
+
+   After rebooting, the router will boot back into the stock firmware normally via the new U-Boot.
+
+#### Option B: Upstream BootBridge Web (No Manual Chip Selection)
+
+If you prefer FlyFish-go's officially tested automated installer:
+1. First upgrade the router's stock firmware to **`RT3000V100R015`** via the H3C stock web UI (BootBridge checks the exact SHA-256 of the stock firmware file and refuses other versions).
+2. Open [BootBridge Web (`IPQ50XX-Uboot` v0.2.0)](https://flyfish-go.github.io/IPQ50XX-Uboot/bootbridge/) (or the legacy [H3C-NX30-Uboot BootBridge Web](https://flyfish-go.github.io/H3C-NX30-Uboot/)) in a browser on `192.168.10.3`, select **RT3000**, feed it the official `RT3000V100R015` file to generate the bridge image locally in the browser, and upload that bridge image in the H3C stock web UI.
+3. After reboot, open `http://192.168.10.1` over a LAN cable and follow the wizard (**Detect → Backup → Install**).
+
+---
+
+### 5. Prepare the OpenWrt 21.02.7 Firmware Archive on `192.168.10.3`
+
+Extract the downloaded firmware `.7z` archive from your downloads folder on `192.168.10.3`:
+
+```bash
+mkdir -p ~/rt3000-openwrt && cd ~/rt3000-openwrt
+7z x ~/Downloads/<your-firmware-archive>.7z
+ls -lh
+sha256sum *.ubi *.bin 2>/dev/null
+```
+
+> If you need the latest OpenWrt 21.02.7 (QSDK 11.5) build directly from upstream, download the matching release files from [`FlyFish-go/H3C-RT3000-Product-R1` Releases](https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases) (e.g. `r14`):
+> - **First install (U-Boot Web Rescue Page):** `H3C-Magic-r14-HW-B-nand-factory.ubi` (replace `HW-B` with your board group)
+> - **Future upgrades (inside OpenWrt LuCI):** `H3C-Magic-r14-HW-B-sysupgrade.bin`
+
+Always verify the `.ubi` file's `sha256sum` against the release notes before flashing.
+
+---
+
+### 6. Flash OpenWrt 21.02.7 via the U-Boot Web Rescue Page
+
+1. **Enter the U-Boot Web Rescue Page:**
+   - Unplug power from the RT3000.
+   - Hold down the **Reset** button (or the **Mesh/WPS** button on U-Boot `v0.1.0+`, which is easier to press).
+   - Plug power back in while holding the button.
+   - Watch the red LED blink once per second: **release after the 3rd red flash** (the LED turns solid green).
+2. **Open the rescue interface from `192.168.10.3`:**
+   - Ensure `192.168.10.3` is wired directly to a **LAN** port on the RT3000 (your static `192.168.10.3/24` address is already in the right subnet; U-Boot also runs a DHCP server handing out `192.168.10.100`–`192.168.10.200`).
+   - Open `http://192.168.10.1` in your browser.
+3. **Check System Info:**
+   - Verify the reported **Hardware Family** (e.g. `HW-B`), detected **NAND model / ECC**, and **5 GHz FEM** status.
+   - Confirm that the firmware `.ubi` file you extracted matches the displayed **Hardware Family**.
+4. **Flash OpenWrt into the Second System Slot (Dual-Boot):**
+   - Go to **Firmware Update** on the rescue page.
+   - Select the slot that does **not** contain the stock firmware (slots are shown by offset: Slot 1 = `0x900000`, Slot 2 = `0x3100000`; stock is normally in Slot 1, so select **Slot 2 / `0x3100000`**).
+   - Upload `H3C-Magic-r14-HW-B-nand-factory.ubi` (your extracted `*-nand-factory.ubi` file) and wait for write + verification to complete.
+   - *(Optional: if you do **not** want to keep the stock H3C firmware and need extra flash space for large packages like OpenClash/PassWall/Tailscale, you can merge both slots into a single **80 MiB** partition on the rescue page's partition-table tab before flashing `.ubi`. This erases the stock system.)*
+5. **Set Default Boot Slot & Reboot:**
+   - On the rescue page overview, set the newly flashed OpenWrt slot as the **Default Boot** slot and reboot / power-cycle the router.
+
+---
+
+### 7. First Boot, Security Hardening & Dual-Boot Switching
+
+After rebooting (~60 seconds), connect to OpenWrt 21.02.7 (QSDK 11.5):
+
+- **Web UI (LuCI):** `http://192.168.10.1/` (LAN only)
+- **SSH:** `ssh root@192.168.10.1` (LAN only, **no root password** on first boot!)
+- **Default Wi-Fi:** `OpenWrt` (2.4 GHz) and `OpenWrt-5G` (5 GHz), WPA2 password `12345678`, country `CN`.
+
+Immediately secure the router after first login:
+
+```sh
+# Over SSH from 192.168.10.3:
+ssh root@192.168.10.1
+passwd
+```
+
+Then open LuCI (`http://192.168.10.1/`) to:
+1. Change the Wi-Fi SSIDs, WPA2/WPA3 passwords, and regulatory country code.
+2. Verify WAN/LAN connectivity and NSS hardware offload (`940 Mbps` wired NAT).
+
+#### Switching Between OpenWrt and Stock Firmware (Dual-Boot)
+
+With U-Boot `v0.1.0+` / `v0.2.0+`, you can switch slots without a PC by holding **Reset** or **Mesh/WPS** while powering on:
+
+| Release Timing (Red LED) | Action |
+|---|---|
+| Before 1st flash | Normal boot of default slot |
+| After **1st** flash | Boot **Slot 1** (`0x900000`, typically stock) and set as default |
+| After **2nd** flash | Boot **Slot 2** (`0x3100000`, typically OpenWrt) and set as default |
+| After **3rd** flash | Enter **Web Rescue Page** (`http://192.168.10.1`) |
+
+#### Future OpenWrt Upgrades
+
+Once OpenWrt 21.02.7 is running, upgrade future releases via LuCI (**System → Backup / Flash Firmware**) using the `*-sysupgrade.bin` image (settings can be preserved; `r14` also supports **Online Update** in LuCI).
+
+---
+
+### 8. Automation with the Linux Machine (`192.168.10.3`)
+
+Because `192.168.10.3` is on the same LAN as the router, [`scripts/rt3000_helper.py`](scripts/rt3000_helper.py) automates the error-prone discovery, backup, and file-serving steps using only Python 3's standard library (no `pip` packages required):
+
+```bash
+# 1. Probe live router via Telnet (read-only): detects HW group, NAND ID, ECC,
+#    and prints the exact U-Boot & OpenWrt filenames to select
+python3 scripts/rt3000_helper.py probe --host 192.168.10.1
+
+# 2. Or inspect an existing .7z MTD backup offline (decodes CDT, ART FEM, BOOTCONFIG, env)
+python3 scripts/rt3000_helper.py inspect-backup firmware/old_firmware.7z
+
+# 3. Automatically stream & verify mtd0..mtd15 backup from router to 192.168.10.3
+python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z
+
+# 4. Stage a .7z/.zip or directory, print SHA-256 hashes, start HTTP server on 192.168.10.3:8899,
+#    and print exact copy-paste wget / sha256sum / safe APPSBL flash commands for debugshell
+python3 scripts/rt3000_helper.py serve ~/Downloads/<archive>.7z --local-ip 192.168.10.3 --port 8899
+```
+
+> [!NOTE]
+> By design, `rt3000_helper.py` **never writes to flash automatically** over Telnet—it prints the exact verified commands with matching SHA-256 digests so you can confirm every check before erasing `0:APPSBL_1` / `0:APPSBL`.
 
 ## Original Firmware
 

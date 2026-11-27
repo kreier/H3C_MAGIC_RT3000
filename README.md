@@ -6,9 +6,9 @@ Updated firmware for the H3C Magic RT3000 HW-B from China Telecom to OpenWRT 21.
 
 Upstream repositories:
 
-- OpenWrt 21.02.7 / QSDK 11.5 firmware: [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
-- U-Boot (v0.1.0, per-NAND images & BootBridge): [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot)
-- U-Boot successor (v0.2.0+, auto-detects NAND/ECC at boot): [https://github.com/FlyFish-go/IPQ50XX-Uboot](https://github.com/FlyFish-go/IPQ50XX-Uboot)
+- **OpenWrt 21.02.7 / QSDK 11.5 firmware:** [https://github.com/FlyFish-go/H3C-RT3000-Product-R1](https://github.com/FlyFish-go/H3C-RT3000-Product-R1)
+- **U-Boot (recommended, v0.2.0+ — auto-detects NAND & ECC at boot):** [https://github.com/FlyFish-go/IPQ50XX-Uboot](https://github.com/FlyFish-go/IPQ50XX-Uboot)
+- ~~U-Boot v0.1.0 (legacy per-NAND images):~~ [https://github.com/FlyFish-go/H3C-NX30-Uboot](https://github.com/FlyFish-go/H3C-NX30-Uboot) — **legacy / superseded**; development moved to `IPQ50XX-Uboot` and this older repo is **not needed** for new installs.
 
 ### Network Setup Used in This Guide
 
@@ -90,10 +90,12 @@ MMMM$ ,MMMMM  MMMMM  MMMM    MMM       MMMM   MMMMM   MMMM    MMMM
 root@OpenWrt:/#
 ```
 
-### 2. Determine Your Hardware Group and Flash Chip (NAND + ECC)
+### 2. Determine Your Hardware Group (and Check NAND Info)
 
 > [!IMPORTANT]
-> The H3C Magic RT3000 shipped with **multiple different PCBs** (`HW-A`, `HW-B`, `HW-C`) and **21 different SPI NAND + ECC combinations**. The web UI string `VER.A` and the sticker on the case (`D0` / `B0` / `C1`) do **not** reliably identify the board or NAND chip. Flashing the wrong board group or wrong NAND/ECC bootloader can brick the router (requiring a UART/TTL serial adapter to recover).
+> The H3C Magic RT3000 shipped with **multiple different PCBs** (`HW-A`, `HW-B`, `HW-C`). The web UI string `VER.A` and the sticker on the case (`D0` / `B0` / `C1`) do **not** reliably identify the board group. Flashing the wrong board group (`HW-A`/`B`/`C`/`D`) can brick the router (requiring a UART/TTL serial adapter to recover).
+>
+> With the current [**`IPQ50XX-Uboot` `v0.2.0+`**](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0), you only need to match your **Hardware Group** (`h3c-hw-a.mbn` … `h3c-hw-d.mbn`)—the bootloader auto-detects the NAND chip and ECC mode at boot. You do **not** need the legacy 84-image per-NAND matrix from `H3C-NX30-Uboot` `v0.1.0`.
 
 Inside `debugshell` (`root@OpenWrt:/#`), run the following **read-only** commands (or run `python3 scripts/rt3000_helper.py probe` from `192.168.10.3` to automate this entire check):
 
@@ -130,31 +132,23 @@ For this repository's router (verified from [`firmware/old_firmware.7z`](firmwar
 - `0:CDT` tuple is `02 08 04 00 00` → `machid = 0x08040000` (`AP-MP02.1`).
 - `0:ART` at `0x26800` has header `01 00 04 04`, `+0x3a = 0x50`, `+0x45 = 0x01` → **no external 5 GHz FEM → `HW-B`**.
 
-#### 2.2 Identify Your NAND Flash Chip & ECC Mode
+#### 2.2 Verify NAND Parameters (Recommended Sanity Check)
 
-In the `dmesg` output, look for the three `nand:` lines:
+Check the `sysfs` attributes on `mtd0`:
+- `writesize` (`2048`), `erasesize` (`131072`)
+- `oobsize` (`64` or `128`) and `ecc_strength` (`4` or `8`)
 
-```text
-nand: device found, Manufacturer ID: 0xc8, Chip ID: 0x41
-nand: GigaDevice GD5F1GQ5REYIG SPI NAND 128MiB 1.8V 8-bit
-nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 128
-```
-
-And check the sysfs attributes on `mtd0`:
-- `oobsize` (`64` or `128`)
-- `ecc_strength` (`4` or `8`)
+With [**`IPQ50XX-Uboot` `v0.2.0+`**](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0), there is only **one file per hardware group** (`h3c-hw-a.mbn`, `h3c-hw-b.mbn`, `h3c-hw-c.mbn`, `h3c-hw-d.mbn`) because U-Boot auto-detects all supported H3C SPI NAND chips and ECC modes at boot—and displays the exact detected NAND model on the Web Rescue Page.
 
 > [!NOTE]
-> **If `dmesg | grep -i nand` prints nothing:** The router's small kernel ring buffer rolls over after some uptime and evicts the early boot `nand:` lines. You have two easy options:
-> 1. **Use [`IPQ50XX-Uboot` `v0.2.0`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0) (`h3c-hw-b.mbn`)** — it auto-detects the NAND chip and ECC at boot, so you do not need to pick a per-NAND zip folder.
-> 2. **If you need the exact NAND ID (for `H3C-NX30-Uboot` `v0.1.0`):** Run `reboot` on the router, wait ~30–45 seconds for Telnet to come back up, and immediately run `dmesg | grep -i nand` (or `./rt3000_helper.py probe --host 192.168.10.1`) before runtime logs overwrite the ring buffer.
+> **If `dmesg | grep -i nand` prints nothing:** The router's small kernel ring buffer rolls over after some uptime and evicts the early boot `nand:` lines. This does **not** matter when using **`IPQ50XX-Uboot` `v0.2.0+`** (`h3c-hw-b.mbn`). If you ever want to read the exact NAND Manufacturer/Chip ID before flashing, run `reboot`, wait ~35 seconds, and immediately run `./rt3000_helper.py probe --host 192.168.10.1`.
 
-> [!WARNING]
-> Two flash chips—`GD5F1GQ5REYIG` (`c8:41`) and `FM25LS01` (`a1:a5`)—exist in **both `ECC4` and `ECC8`** configurations. Always verify `ecc_strength` (and `oobsize`) from `/sys/class/mtd/mtd0/`; never guess by chip name alone.
+<details>
+<summary><strong>Legacy reference (not needed for new installs):</strong> <code>H3C-NX30-Uboot</code> v0.1.0 per-NAND table (21 chips)</summary>
 
-Match your **Manufacturer:Chip ID**, **Model**, **OOB size**, and **ECC strength** against the 21 builds published in [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0) (`uboot-v0.1.0-HW-<X>.zip`):
+> The legacy [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0) repo required manually matching your exact NAND chip ID and ECC mode from `dmesg` + `/sys/class/mtd/mtd0/` (`GD5F1GQ5REYIG` `c8:41` and `FM25LS01` `a1:a5` exist in both `ECC4` and `ECC8`). Prefer **`IPQ50XX-Uboot` `v0.2.0+`** instead.
 
-| Mfr:Chip ID | NAND Model | Size / Page / OOB | ECC | Folder inside `uboot-v0.1.0-HW-<X>.zip` |
+| Mfr:Chip ID | NAND Model | Size / Page / OOB | ECC | Legacy folder inside `uboot-v0.1.0-HW-<X>.zip` |
 |---|---|---|---|---|
 | `2c:15` | Micron `MT29F1G01ABBFDWB-IT` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/MT29F1G01ABBFDWB-IT-ECC8/appsbl.mbn` |
 | `98:d2` | Kioxia/Toshiba `TC58CYG0S3HRAIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/TC58CYG0S3HRAIG-ECC8/appsbl.mbn` |
@@ -178,8 +172,7 @@ Match your **Manufacturer:Chip ID**, **Model**, **OOB size**, and **ECC strength
 | `ef:bc` | Winbond `W25N01JW` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N01JW-ECC4/appsbl.mbn` |
 | `ef:bf` | Winbond `W25N02JWZEIF` | 256 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N02JWZEIF-ECC4/appsbl.mbn` |
 
-> [!TIP]
-> **Simpler alternative (`IPQ50XX-Uboot` v0.2.0+):** Development of `H3C-NX30-Uboot` moved to [`FlyFish-go/IPQ50XX-Uboot`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0). Starting with **v0.2.0**, there is only **one U-Boot file per hardware group** (`h3c-hw-a.mbn`, `h3c-hw-b.mbn`, `h3c-hw-c.mbn`, `h3c-hw-d.mbn`) because U-Boot auto-detects the NAND chip and ECC mode at boot. You still must verify your exact Hardware Group (`HW-B`, etc.) and check that your NAND chip is supported in the table above.
+</details>
 
 ---
 
@@ -222,29 +215,35 @@ You have two ways to install U-Boot. **Do NOT upload `appsbl.mbn` directly to th
 
 Use this path when Telnet (`debugshell`) is already active on `RT3000V100R005L01` and you do not want to upgrade stock firmware to `RT3000V100R015` first.
 
-1. **Download and verify U-Boot on `192.168.10.3`:**
-   - From [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0): download `uboot-v0.1.0-HW-B.zip` (replace `HW-B` with your detected group) and `SHA256SUMS.txt`, extract the exact `HW-B/<NAND-MODEL>-ECC<4|8>/appsbl.mbn` matched in Step 2.2, and verify its SHA-256.
-   - *(Or from [`IPQ50XX-Uboot` `v0.2.0`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0): download `h3c-hw-b.mbn` and verify against `SHA256SUMS`.)*
-
-2. **Serve the U-Boot image from `192.168.10.3`:**
-   Put **only** the verified U-Boot file (renamed or copied as `appsbl.mbn`) into a clean staging folder (e.g. `~/rt3000-stage`) and start a temporary HTTP server (or run `python3 scripts/rt3000_helper.py serve ~/rt3000-stage --local-ip 192.168.10.3`):
+1. **Download and verify U-Boot (`IPQ50XX-Uboot` `v0.2.0+`) on `192.168.10.3`:**
+   Use `./rt3000_helper.py releases --hw HW-B` to get the latest download URL and SHA-256, or download directly from [`IPQ50XX-Uboot` `v0.2.0`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0) (replace `hw-b` if your board group differs):
 
    ```bash
-   cd ~/rt3000-stage
-   sha256sum appsbl.mbn
-   python3 -m http.server 8899 --bind 192.168.10.3
+   mkdir -p ~/rt3000-stage && cd ~/rt3000-stage
+   curl -LO https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/download/v0.2.0/h3c-hw-b.mbn
+   curl -LO https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/download/v0.2.0/SHA256SUMS
+   grep h3c-hw-b.mbn SHA256SUMS | sha256sum -c -
    ```
+
+2. **Serve the U-Boot image from `192.168.10.3`:**
+   Run the helper script (which prints exact copy-paste `wget`, `sha256sum`, and dual-slot flash commands):
+
+   ```bash
+   ./rt3000_helper.py serve ~/rt3000-stage/h3c-hw-b.mbn --local-ip 192.168.10.3 --port 8899
+   ```
+
+   *(Or manually with Python: `cd ~/rt3000-stage && python3 -m http.server 8899 --bind 192.168.10.3`.)*
 
 3. **Download and verify on the router (`debugshell`):**
 
    ```sh
    cd /tmp
-   wget http://192.168.10.3:8899/appsbl.mbn -O /tmp/appsbl.mbn
+   wget http://192.168.10.3:8899/h3c-hw-b.mbn -O /tmp/appsbl.mbn
    sha256sum /tmp/appsbl.mbn
    ls -l /tmp/appsbl.mbn
    ```
 
-   **Stop immediately** if the SHA-256 does not match the upstream `SHA256SUMS` and your Linux host's `sha256sum`.
+   **Stop immediately** if the SHA-256 does not match `SHA256SUMS` and your Linux host's `sha256sum`.
 
 4. **Pre-flash safety checks on the router (`debugshell`):**
 
@@ -302,11 +301,11 @@ Use this path when Telnet (`debugshell`) is already active on `RT3000V100R005L01
 
    After rebooting, the router will boot back into the stock firmware normally via the new U-Boot.
 
-#### Option B: Upstream BootBridge Web (No Manual Chip Selection)
+#### Option B: Upstream BootBridge Web (Browser-Guided Installer)
 
-If you prefer FlyFish-go's officially tested automated installer:
+If you prefer FlyFish-go's officially tested browser-guided installer:
 1. First upgrade the router's stock firmware to **`RT3000V100R015`** via the H3C stock web UI (BootBridge checks the exact SHA-256 of the stock firmware file and refuses other versions).
-2. Open [BootBridge Web (`IPQ50XX-Uboot` v0.2.0)](https://flyfish-go.github.io/IPQ50XX-Uboot/bootbridge/) (or the legacy [H3C-NX30-Uboot BootBridge Web](https://flyfish-go.github.io/H3C-NX30-Uboot/)) in a browser on `192.168.10.3`, select **RT3000**, feed it the official `RT3000V100R015` file to generate the bridge image locally in the browser, and upload that bridge image in the H3C stock web UI.
+2. Open [BootBridge Web (`IPQ50XX-Uboot` v0.2.0)](https://flyfish-go.github.io/IPQ50XX-Uboot/bootbridge/) in a browser on `192.168.10.3`, select **RT3000**, feed it the official `RT3000V100R015` file to generate the bridge image locally in the browser, and upload that bridge image in the H3C stock web UI.
 3. After reboot, open `http://192.168.10.1` over a LAN cable and follow the wizard (**Detect → Backup → Install**).
 
 ---

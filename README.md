@@ -104,9 +104,9 @@ cat /proc/device-tree/model; echo
 cat /proc/mtd
 fw_printenv
 
-# 2. Board machid from 0:CDT (mtd8) and 5 GHz FEM flag from 0:ART (mtd13)
-dd if=/dev/mtd8 bs=64 count=1 2>/dev/null | hexdump -C
-dd if=/dev/mtd13 bs=1 skip=$((0x26800)) count=80 2>/dev/null | hexdump -C
+# 2. Board machid from 0:CDT (mtd8) and 5 GHz FEM flag from 0:ART (mtd13 @ 0x26800 = 77*2048)
+dd if=/dev/mtd8 bs=2048 count=1 2>/dev/null | dd bs=64 count=1 2>/dev/null | hexdump -C
+dd if=/dev/mtd13 bs=2048 skip=77 count=1 2>/dev/null | dd bs=80 count=1 2>/dev/null | hexdump -C
 
 # 3. NAND Manufacturer ID, Chip ID, model, page/OOB size, and ECC strength
 dmesg | grep -iE "nand:|spi|mtd|ipq|switch|qca|rtl"
@@ -143,6 +143,11 @@ nand: 128 MiB, SLC, erase size: 128 KiB, page size: 2048, OOB size: 128
 And check the sysfs attributes on `mtd0`:
 - `oobsize` (`64` or `128`)
 - `ecc_strength` (`4` or `8`)
+
+> [!NOTE]
+> **If `dmesg | grep -i nand` prints nothing:** The router's small kernel ring buffer rolls over after some uptime and evicts the early boot `nand:` lines. You have two easy options:
+> 1. **Use [`IPQ50XX-Uboot` `v0.2.0`](https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/tag/v0.2.0) (`h3c-hw-b.mbn`)** — it auto-detects the NAND chip and ECC at boot, so you do not need to pick a per-NAND zip folder.
+> 2. **If you need the exact NAND ID (for `H3C-NX30-Uboot` `v0.1.0`):** Run `reboot` on the router, wait ~30–45 seconds for Telnet to come back up, and immediately run `dmesg | grep -i nand` (or `./rt3000_helper.py probe --host 192.168.10.1`) before runtime logs overwrite the ring buffer.
 
 > [!WARNING]
 > Two flash chips—`GD5F1GQ5REYIG` (`c8:41`) and `FM25LS01` (`a1:a5`)—exist in **both `ECC4` and `ECC8`** configurations. Always verify `ecc_strength` (and `oobsize`) from `/sys/class/mtd/mtd0/`; never guess by chip name alone.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-H3C Magic RT3000 helper v0.1.0 for a Linux host on the same LAN (e.g. 192.168.10.3).
+H3C Magic RT3000 helper v0.1.1 for a Linux host on the same LAN (e.g. 192.168.10.3).
 
 Compatible with OpenWrt 21.02.7 / QSDK 11.5 r14 and future FlyFish-go releases,
 as well as H3C-NX30-Uboot (v0.1.0) and IPQ50XX-Uboot (v0.2.0+).
@@ -37,7 +37,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 DEFAULT_FIRMWARE_RELEASE = "r14"
 UPSTREAM_FIRMWARE_REPO = "FlyFish-go/H3C-RT3000-Product-R1"
@@ -81,6 +81,7 @@ class RawTelnet:
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.setblocking(False)
         self.buf = bytearray()
+        self._seq = 0
 
     def close(self) -> None:
         try:
@@ -115,6 +116,16 @@ class RawTelnet:
             i += 1
         return bytes(out)
 
+    def _pump(self, timeout: float = 0.2) -> bool:
+        r, _, _ = select.select([self.sock], [], [], timeout)
+        if not r:
+            return False
+        data = self.sock.recv(4096)
+        if not data:
+            return False
+        self.buf.extend(self._strip_iac(data))
+        return True
+
     def read_until(self, markers, timeout: float = 10.0) -> str:
         if isinstance(markers, (bytes, str)):
             markers = [markers]
@@ -128,16 +139,18 @@ class RawTelnet:
                     chunk = bytes(self.buf[:end])
                     del self.buf[:end]
                     return chunk.decode("utf-8", errors="replace")
-            wait = max(0.05, min(0.5, deadline - time.monotonic()))
-            r, _, _ = select.select([self.sock], [], [], wait)
-            if r:
-                data = self.sock.recv(4096)
-                if not data:
-                    break
-                self.buf.extend(self._strip_iac(data))
+            wait = max(0.02, min(0.25, deadline - time.monotonic()))
+            if not self._pump(wait):
+                # Re-check in case EOF closed with partial data
+                continue
         chunk = bytes(self.buf)
         self.buf.clear()
         return chunk.decode("utf-8", errors="replace")
+
+    def drain(self, quiet_sec: float = 0.2) -> None:
+        while self._pump(quiet_sec):
+            pass
+        self.buf.clear()
 
     def write(self, text: str) -> None:
         self.sock.sendall(text.encode("utf-8"))
@@ -145,28 +158,77 @@ class RawTelnet:
     def enter_debugshell(self) -> None:
         banner = self.read_until([">", "#", "login:"], timeout=8.0)
         if "#" in banner:
+            self.drain(0.2)
+            self.run("true", timeout=5.0)
             return
         if ">" in banner:
             self.write("debugshell\n")
-            out = self.read_until(["#", ">"], timeout=8.0)
-            if "#" not in out:
+            out = self.read_until(["root@OpenWrt", "# ", "#\r", "#\n"], timeout=8.0)
+            if "#" not in out and "root@" not in out:
                 raise RuntimeError(f"Failed to enter debugshell. Output:\n{out}")
+            self.drain(0.25)
+            # Synchronize prompt/echo before real commands
+            self.run("true", timeout=5.0)
             return
         raise RuntimeError(f"Unexpected telnet prompt:\n{banner}")
 
     def run(self, cmd: str, timeout: float = 20.0) -> str:
-        marker = f"__RT3000_END_{int(time.time() * 1000) % 100000}__"
-        self.write(f"{cmd}; echo {marker}\n")
-        raw = self.read_until(marker, timeout=timeout)
-        # Drain trailing prompt
-        self.read_until("#", timeout=1.5)
-        lines = raw.replace("\r", "").splitlines()
-        # Strip echoed command and marker line
-        if lines and marker in lines[-1]:
-            lines = lines[:-1]
-        if lines and cmd.split()[0] in lines[0]:
-            lines = lines[1:]
-        return "\n".join(lines).strip()
+        """
+        Run a command in BusyBox ash with split-quoted start/end markers.
+
+        Using echo '__B''N__' ensures the echoed command line NEVER contains the
+        literal marker '__BN__', avoiding premature matches on TTY echo and
+        80-column line wrapping.
+        """
+        self._seq += 1
+        seq = self._seq
+        beg_lit = f"__B{seq}__"
+        end_lit = f"__E{seq}__"
+        beg_tok = f"'__B''{seq}__'"
+        end_tok = f"'__E''{seq}__'"
+
+        # Clear any stale trailing prompt bytes before issuing the command
+        self.drain(0.05)
+        self.write(f"echo {beg_tok}; {cmd}; echo ''; echo {end_tok}\n")
+
+        # Read until end_lit appears on its own line (after normalizing \r\n -> \n)
+        end_re = re.compile(rf"(?:^|\n){re.escape(end_lit)}(?:\r?\n|$)")
+        beg_re = re.compile(rf"(?:^|\n){re.escape(beg_lit)}\r?\n")
+        deadline = time.monotonic() + timeout
+        collected = bytearray()
+
+        while time.monotonic() < deadline:
+            if self.buf:
+                collected.extend(self.buf)
+                self.buf.clear()
+            text = collected.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+            m_beg = beg_re.search(text)
+            if m_beg:
+                m_end = end_re.search(text, m_beg.end())
+                if m_end:
+                    # Keep any bytes after the end marker in self.buf? Not needed after drain.
+                    return text[m_beg.end() : m_end.start()].strip()
+            wait = max(0.02, min(0.25, deadline - time.monotonic()))
+            self._pump(wait)
+
+        text = collected.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+        m_beg = beg_re.search(text)
+        if m_beg:
+            return text[m_beg.end() :].strip()
+        return text.strip()
+
+
+def parse_hexdump_c(text: str) -> bytes:
+    """Parse canonical `hexdump -C` output into raw bytes."""
+    out = bytearray()
+    for line in text.splitlines():
+        m = re.match(r"^[0-9a-fA-F]{6,8}\s+((?:[0-9a-fA-F]{2}\s+)+)", line)
+        if not m:
+            continue
+        for tok in m.group(1).split():
+            if len(tok) == 2:
+                out.append(int(tok, 16))
+    return bytes(out)
 
 
 def parse_cdt_machid(cdt: bytes):
@@ -303,8 +365,20 @@ def print_recommendations(
                 print(f"  [!] WARNING: sysfs OOB={oob} differs from candidate expected OOB={expected_oob}! Double-check before flashing.")
         else:
             print(f"  [!] H3C-NX30-Uboot v0.1.0: No exact match for ID {nand_mfr}:{nand_chip} with ECC{ecc}!")
+    elif ecc and oob:
+        matching = [
+            f"{mfr}:{chip} ({model})"
+            for (mfr, chip, e), (model, _, exp_oob) in NAND_CANDIDATES.items()
+            if e == int(ecc) and exp_oob == int(oob)
+        ]
+        print(f"  H3C-NX30-Uboot v0.1.0   : NAND ID not in dmesg (ring buffer likely rolled over after boot).")
+        print(f"                            Matching chips for OOB={oob}, ECC={ecc} ({len(matching)} candidates):")
+        for item in matching:
+            print(f"                              - {item}")
+        print(f"                            Option 1 (easiest): Use IPQ50XX-Uboot v0.2.0 (`h3c-{group_lower}.mbn`) — auto-detects NAND/ECC at boot.")
+        print(f"                            Option 2 (v0.1.0) : Reboot router, wait ~35s, and re-run `probe` immediately before dmesg wraps.")
     else:
-        print("  H3C-NX30-Uboot v0.1.0   : Run `probe` on the live router to read NAND ID and ECC from dmesg/sysfs.")
+        print("  H3C-NX30-Uboot v0.1.0   : Run `probe` right after router boot to read NAND ID and ECC from dmesg/sysfs.")
 
 
 def cmd_releases(args):
@@ -364,9 +438,13 @@ def cmd_probe(args):
         print("[*] Entered debugshell.")
 
         uname = tn.run("uname -a")
-        dt_model = tn.run("cat /proc/device-tree/model 2>/dev/null; echo")
+        uptime_raw = tn.run("cat /proc/uptime 2>/dev/null")
+        dt_model = tn.run("cat /proc/device-tree/model 2>/dev/null")
         mtd_table = tn.run("cat /proc/mtd")
+        dmesg_head = tn.run("dmesg | head -n 3")
         dmesg_nand = tn.run('dmesg | grep -iE "nand:|spi|switch|qca|rtl"')
+        if not dmesg_nand:
+            dmesg_nand = tn.run('logread 2>/dev/null | grep -iE "nand:|spi nand|qpic"')
         sys_mtd0 = tn.run(
             'for f in name writesize erasesize oobsize ecc_strength; do '
             'echo "$f=$(cat /sys/class/mtd/mtd0/$f 2>/dev/null)"; done'
@@ -377,15 +455,19 @@ def cmd_probe(args):
         )
         tools_avail = tn.run("for t in mtd flash_erase nandwrite ubiformat wget nc md5sum sha256sum; do which $t 2>/dev/null; done")
 
-        # Hex dumps for CDT (mtd8), ART 5G block (mtd13 @ 0x26800), and BOOTCONFIG (mtd2)
-        cdt_hex = tn.run("dd if=/dev/mtd8 bs=64 count=1 2>/dev/null | hexdump -ve '1/1 \"%02x\"'")
-        art_hex = tn.run("dd if=/dev/mtd13 bs=1 skip=$((0x26800)) count=80 2>/dev/null | hexdump -ve '1/1 \"%02x\"'")
-        bc_hex = tn.run("dd if=/dev/mtd2 bs=256 count=1 2>/dev/null | hexdump -ve '1/1 \"%02x\"'")
+        # Page-aligned NAND reads + canonical `hexdump -C` (universal in BusyBox):
+        # 0:CDT (mtd8 @ 0), 0:ART 5G block (mtd13 @ 0x26800 = 77 * 2048), 0:BOOTCONFIG (mtd2 @ 0)
+        cdt_dump = tn.run("dd if=/dev/mtd8 bs=2048 count=1 2>/dev/null | dd bs=64 count=1 2>/dev/null | hexdump -C")
+        art_dump = tn.run("dd if=/dev/mtd13 bs=2048 skip=77 count=1 2>/dev/null | dd bs=80 count=1 2>/dev/null | hexdump -C")
+        bc_dump = tn.run("dd if=/dev/mtd2 bs=2048 count=1 2>/dev/null | dd bs=256 count=1 2>/dev/null | hexdump -C")
     finally:
         tn.close()
 
     print("\n=== System Info ===")
     print(f"  uname        : {uname}")
+    if uptime_raw:
+        up_sec = uptime_raw.split()[0]
+        print(f"  uptime       : {up_sec} s")
     print(f"  DT model     : {dt_model.strip()}")
     print(f"  Tools found  : {', '.join(tools_avail.splitlines())}")
     print(f"  APPSBL bad   : {bad_appsbl}")
@@ -394,9 +476,9 @@ def cmd_probe(args):
     print(mtd_table)
 
     # Parse CDT & ART
-    cdt_bytes = bytes.fromhex(re.sub(r"[^0-9a-fA-F]", "", cdt_hex)) if cdt_hex else b""
-    art_bytes = bytes.fromhex(re.sub(r"[^0-9a-fA-F]", "", art_hex)) if art_hex else b""
-    bc_bytes = bytes.fromhex(re.sub(r"[^0-9a-fA-F]", "", bc_hex)) if bc_hex else b""
+    cdt_bytes = parse_hexdump_c(cdt_dump)
+    art_bytes = parse_hexdump_c(art_dump)
+    bc_bytes = parse_hexdump_c(bc_dump)
 
     cdt_info = parse_cdt_machid(cdt_bytes)
     machid = cdt_info[0] if cdt_info else None
@@ -431,7 +513,12 @@ def cmd_probe(args):
     oob = sys_kv.get("oobsize", "").strip()
 
     print("\n=== NAND Flash ===")
-    print(f"  ID (Mfr:Chip): {f'{nand_mfr}:{nand_chip}' if nand_mfr else 'not found in dmesg'}")
+    if nand_mfr:
+        print(f"  ID (Mfr:Chip): {nand_mfr}:{nand_chip}")
+    else:
+        ts_m = re.search(r"\[\s*([0-9]+\.[0-9]+)\]", dmesg_head)
+        earliest = f" (earliest dmesg line is at {ts_m.group(1)}s — boot log rolled over!)" if ts_m and float(ts_m.group(1)) > 5.0 else ""
+        print(f"  ID (Mfr:Chip): not found in dmesg{earliest}")
     if m_mod:
         print(f"  Model line   : {m_mod.group(1).strip()}")
     if m_geo:

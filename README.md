@@ -145,33 +145,35 @@ With [**`IPQ50XX-Uboot` `v0.2.0+`**](https://github.com/FlyFish-go/IPQ50XX-Uboot
 
 <details>
 <summary><strong>Legacy reference (not needed for new installs):</strong> <code>H3C-NX30-Uboot</code> v0.1.0 per-NAND table (21 chips)</summary>
-
-> The legacy [`H3C-NX30-Uboot` `uboot-v0.1.0`](https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0) repo required manually matching your exact NAND chip ID and ECC mode from `dmesg` + `/sys/class/mtd/mtd0/` (`GD5F1GQ5REYIG` `c8:41` and `FM25LS01` `a1:a5` exist in both `ECC4` and `ECC8`). Prefer **`IPQ50XX-Uboot` `v0.2.0+`** instead.
-
-| Mfr:Chip ID | NAND Model | Size / Page / OOB | ECC | Legacy folder inside `uboot-v0.1.0-HW-<X>.zip` |
-|---|---|---|---|---|
-| `2c:15` | Micron `MT29F1G01ABBFDWB-IT` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/MT29F1G01ABBFDWB-IT-ECC8/appsbl.mbn` |
-| `98:d2` | Kioxia/Toshiba `TC58CYG0S3HRAIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/TC58CYG0S3HRAIG-ECC8/appsbl.mbn` |
-| `98:db` | Kioxia/Toshiba `TC58CYG1S3HRAIJ` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/TC58CYG1S3HRAIJ-ECC4/appsbl.mbn` |
-| `a1:a5` | Fudan `FM25LS01` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/FM25LS01-ECC4/appsbl.mbn` |
-| `a1:a5` | Fudan `FM25LS01` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/FM25LS01-ECC8/appsbl.mbn` |
-| `c2:92` | Macronix `MX35UF1GE4AC` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/MX35UF1GE4AC-ECC4/appsbl.mbn` |
-| `c8:11` | ESMT `F50D1G41LB(2M)` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/F50D1G41LB-2M-ECC4/appsbl.mbn` |
-| `c8:21` | GigaDevice `GD5F1GQ5REYIH` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F1GQ5REYIH-ECC4/appsbl.mbn` |
-| `c8:22` | GigaDevice `GD5F2GQ5REYIH` | 256 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F2GQ5REYIH-ECC4/appsbl.mbn` |
-| `c8:41` | GigaDevice `GD5F1GQ5REYIG` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/GD5F1GQ5REYIG-ECC4/appsbl.mbn` |
-| `c8:41` | GigaDevice `GD5F1GQ5REYIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GQ5REYIG-ECC8/appsbl.mbn` |
-| `c8:45` | GigaDevice `GD5F4GQ6REYIGY` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/GD5F4GQ6REYIGY-ECC4/appsbl.mbn` |
-| `c8:81` | GigaDevice `GD5F1GM7REYIG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GM7REYIG-ECC8/appsbl.mbn` |
-| `c8:c1` | GigaDevice `GD5F1GQ4RE9IG` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/GD5F1GQ4RE9IG-ECC8/appsbl.mbn` |
-| `c8:c9` | GigaDevice `GD5F1GQ4RE9IH` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/GD5F1GQ4RE9IH-ECC4/appsbl.mbn` |
-| `e5:21` | Dosilicon `DS35M1GA-IB` | 128 MiB / 2K / 128 | 4-bit | `HW-<X>/DS35M1GA-IB-ECC4/appsbl.mbn` |
-| `e5:72` | Dosilicon `DS35Q2GA` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/DS35Q2GA-ECC4/appsbl.mbn` |
-| `e5:a4` | Dosilicon `DS35M4GM` | 128 MiB / 2K / 128 | 8-bit | `HW-<X>/DS35M4GM-ECC8/appsbl.mbn` |
-| `ef:ba` | Winbond `W25N01GWZEIG` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N01GWZEIG-ECC4/appsbl.mbn` |
-| `ef:bc` | Winbond `W25N01JW` | 128 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N01JW-ECC4/appsbl.mbn` |
-| `ef:bf` | Winbond `W25N02JWZEIF` | 256 MiB / 2K / 64 | 4-bit | `HW-<X>/W25N02JWZEIF-ECC4/appsbl.mbn` |
-
+<p>The legacy <a href="https://github.com/FlyFish-go/H3C-NX30-Uboot/releases/tag/uboot-v0.1.0"><code>H3C-NX30-Uboot</code> <code>uboot-v0.1.0</code></a> repo required manually matching your exact NAND chip ID and ECC mode from <code>dmesg</code> + <code>/sys/class/mtd/mtd0/</code> (<code>GD5F1GQ5REYIG</code> <code>c8:41</code> and <code>FM25LS01</code> <code>a1:a5</code> exist in both <code>ECC4</code> and <code>ECC8</code>). Prefer <strong><code>IPQ50XX-Uboot</code> <code>v0.2.0+</code></strong> instead.</p>
+<table>
+<thead>
+<tr><th>Mfr:Chip ID</th><th>NAND Model</th><th>Size / Page / OOB</th><th>ECC</th><th>Legacy folder inside <code>uboot-v0.1.0-HW-&lt;X&gt;.zip</code></th></tr>
+</thead>
+<tbody>
+<tr><td><code>2c:15</code></td><td>Micron <code>MT29F1G01ABBFDWB-IT</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/MT29F1G01ABBFDWB-IT-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>98:d2</code></td><td>Kioxia/Toshiba <code>TC58CYG0S3HRAIG</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/TC58CYG0S3HRAIG-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>98:db</code></td><td>Kioxia/Toshiba <code>TC58CYG1S3HRAIJ</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/TC58CYG1S3HRAIJ-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>a1:a5</code></td><td>Fudan <code>FM25LS01</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/FM25LS01-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>a1:a5</code></td><td>Fudan <code>FM25LS01</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/FM25LS01-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>c2:92</code></td><td>Macronix <code>MX35UF1GE4AC</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/MX35UF1GE4AC-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:11</code></td><td>ESMT <code>F50D1G41LB(2M)</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/F50D1G41LB-2M-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:21</code></td><td>GigaDevice <code>GD5F1GQ5REYIH</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/GD5F1GQ5REYIH-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:22</code></td><td>GigaDevice <code>GD5F2GQ5REYIH</code></td><td>256 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/GD5F2GQ5REYIH-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:41</code></td><td>GigaDevice <code>GD5F1GQ5REYIG</code></td><td>128 MiB / 2K / 128</td><td>4-bit</td><td><code>HW-&lt;X&gt;/GD5F1GQ5REYIG-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:41</code></td><td>GigaDevice <code>GD5F1GQ5REYIG</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/GD5F1GQ5REYIG-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:45</code></td><td>GigaDevice <code>GD5F4GQ6REYIGY</code></td><td>128 MiB / 2K / 128</td><td>4-bit</td><td><code>HW-&lt;X&gt;/GD5F4GQ6REYIGY-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:81</code></td><td>GigaDevice <code>GD5F1GM7REYIG</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/GD5F1GM7REYIG-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:c1</code></td><td>GigaDevice <code>GD5F1GQ4RE9IG</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/GD5F1GQ4RE9IG-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>c8:c9</code></td><td>GigaDevice <code>GD5F1GQ4RE9IH</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/GD5F1GQ4RE9IH-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>e5:21</code></td><td>Dosilicon <code>DS35M1GA-IB</code></td><td>128 MiB / 2K / 128</td><td>4-bit</td><td><code>HW-&lt;X&gt;/DS35M1GA-IB-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>e5:72</code></td><td>Dosilicon <code>DS35Q2GA</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/DS35Q2GA-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>e5:a4</code></td><td>Dosilicon <code>DS35M4GM</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td><td><code>HW-&lt;X&gt;/DS35M4GM-ECC8/appsbl.mbn</code></td></tr>
+<tr><td><code>ef:ba</code></td><td>Winbond <code>W25N01GWZEIG</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/W25N01GWZEIG-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>ef:bc</code></td><td>Winbond <code>W25N01JW</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/W25N01JW-ECC4/appsbl.mbn</code></td></tr>
+<tr><td><code>ef:bf</code></td><td>Winbond <code>W25N02JWZEIF</code></td><td>256 MiB / 2K / 64</td><td>4-bit</td><td><code>HW-&lt;X&gt;/W25N02JWZEIF-ECC4/appsbl.mbn</code></td></tr>
+</tbody>
+</table>
 </details>
 
 ---

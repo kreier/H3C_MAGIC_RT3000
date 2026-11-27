@@ -1,0 +1,86 @@
+<h1>uBootKit-Herkunft &amp; Aufbau</h1>
+<p class="lead">
+  Woher der Bootloader von <a href="https://github.com/FlyFish-go/IPQ50XX-Uboot" target="_blank" rel="noopener">FlyFish-go/IPQ50XX-Uboot</a>
+  stammt, was die einzelnen Upstream-Projekte beitragen und in welchen Flash-Partitionen er auf dem RT3000 installiert wird.
+</p>
+
+<h2 id="open-source-lineage">Open-Source-Abstammung</h2>
+<div class="lineage">
+  <div class="lineage-step">
+    <span class="lineage-tag">Ebene 1 · Basis</span>
+    <h4>Qualcomm QSDK 12.5 <code>u-boot-2016</code></h4>
+    <p>
+      Qualcomm-IPQ-Basis aus CodeLinaro
+      <a href="https://git.codelinaro.org/clo/qsdk/oss/boot/u-boot-2016/-/tree/NHSS.QSDK.12.5" target="_blank" rel="noopener">NHSS.QSDK.12.5</a>
+      und <a href="https://github.com/1980490718/u-boot-2016" target="_blank" rel="noopener">1980490718/u-boot-2016</a>
+      (<code>AU_LINUX_QSDK_NHSS.QSDK.12.5_TARGET_ALL.12.5.2783.2994</code>), kombiniert mit DHCP- und Web-Failsafe-Konzepten aus
+      <a href="https://github.com/Yuzhii0718/bl-mt798x-dhcpd" target="_blank" rel="noopener">Yuzhii0718/bl-mt798x-dhcpd</a>
+      (einer Variante von <code>hanwckf</code>s MT798x-U-Boot).
+    </p>
+  </div>
+  <div class="lineage-step">
+    <span class="lineage-tag">Ebene 2 · uBootKit</span>
+    <h4><a href="https://github.com/chenxin527/uboot-qsdk12.5-build" target="_blank" rel="noopener">chenxin527/uboot-qsdk12.5-build</a></h4>
+    <p>
+      Das direkte Upstream-Projekt <strong>uBootKit</strong> für Qualcomm IPQ50xx / IPQ53xx / IPQ60xx / IPQ807x.
+      Liefert die moderne Argon-Web-Rettungsseite, den eingebauten DHCP-Server (keine manuelle statische IP nötig) und den Multi-SoC-Build.
+    </p>
+  </div>
+  <div class="lineage-step">
+    <span class="lineage-tag">Ebene 3 · IPQ50XX-Uboot</span>
+    <h4><a href="https://github.com/FlyFish-go/IPQ50XX-Uboot" target="_blank" rel="noopener">FlyFish-go/IPQ50XX-Uboot</a></h4>
+    <p>
+      Ergänzt H3C-NX30/RT3000/RC3000/RW3000-Unterstützung (<code>HW-A</code>–<code>HW-D</code>), automatische NAND-/ECC-Erkennung (<code>v0.2.0+</code>),
+      herstellerkonforme <code>BOOTCONFIG</code>-Dual-Boot-Logik, 80/116-MiB-Partitionierung, Prüfungen vor jedem Schreibvorgang und <strong>BootBridge Web</strong>.
+    </p>
+  </div>
+</div>
+
+<p>Die vollständige Git-Commit-Historie von <code>chenxin527/uboot-qsdk12.5-build</code> bleibt im Vorgänger-Repository <a href="https://github.com/FlyFish-go/H3C-NX30-Uboot" target="_blank" rel="noopener">FlyFish-go/H3C-NX30-Uboot</a> erhalten.</p>
+
+<h2 id="where-it-installs">Installationsort im 128-MiB-Flash</h2>
+<p>
+  In der Qualcomm-Bootkette (<code>PBL → SBL1 → QSEE/DEVCFG → APPSBL → Linux</code>) entspricht U-Boot der
+  <strong>APPSBL</strong>-Stufe (<em>Applications Processor Secondary Boot Loader</em>). Auf dem RT3000 belegt er zwei gespiegelte Partitionen
+  (siehe <a href="../hardware/partitions.html">128-MiB-Partitionslayout</a>):
+</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Partition</th><th>MTD</th><th>Adressbereich</th><th class="num">Slot-Größe</th><th class="num">uBootKit v0.2.0</th><th class="num">Original-U-Boot</th></tr>
+    </thead>
+    <tbody>
+      <tr class="uboot-row">
+        <td class="mono"><strong>0:APPSBL</strong> (Primär)</td>
+        <td class="mono">mtd11</td>
+        <td class="mono">0x00500000–0x00640000</td>
+        <td class="num">1.280 KiB (1,25 MiB)</td>
+        <td class="num">628,2 KiB (49,1%)</td>
+        <td class="num">415,6 KiB (32,5%)</td>
+      </tr>
+      <tr class="uboot-row">
+        <td class="mono"><strong>0:APPSBL_1</strong> (Backup)</td>
+        <td class="mono">mtd12</td>
+        <td class="mono">0x00640000–0x00780000</td>
+        <td class="num">1.280 KiB (1,25 MiB)</td>
+        <td class="num">628,2 KiB (49,1%)</td>
+        <td class="num">415,6 KiB (32,5%)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<ul>
+  <li><strong>Reservierter Bootloader-Platz insgesamt:</strong> <code>2,50 MiB</code> (<strong>1,95%</strong> des 128-MiB-NAND-Chips).</li>
+  <li><strong>Tatsächliche Binärgröße (<code>h3c-hw-b.mbn</code>, 643.280 Bytes × 2):</strong> <code>1,23 MiB</code> (<strong>0,96%</strong> des Chips).</li>
+  <li><strong>Umgebung &amp; Slot-Auswahl:</strong> Laufzeitvariablen liegen in <code>0:APPSBLENV</code> (<code>mtd10</code>, 512 KiB); <code>0:SBL1</code> wählt Slot 0 oder 1 über <code>0:BOOTCONFIG</code> / <code>0:BOOTCONFIG1</code> (<code>mtd2</code>/<code>mtd3</code>).</li>
+</ul>
+
+<h2 id="v020-vs-v010">Warum <code>v0.2.0+</code> das ältere <code>v0.1.0</code> ersetzt</h2>
+<div class="callout tip">
+  <div class="callout-title">Eine Datei pro Hardware-Gruppe</div>
+  Das ältere <code>H3C-NX30-Uboot v0.1.0</code> erforderte eine Matrix aus 84 Images (4 Platinen × 21 NAND-/ECC-Profile).
+  <code>IPQ50XX-Uboot v0.2.0+</code> reduziert das auf eine einzige Datei pro Gruppe (<code>h3c-hw-b.mbn</code> für RT3000 HW-B)
+  mit automatischer Erkennung von NAND-Chip und ECC-Stärke beim Booten.
+</div>

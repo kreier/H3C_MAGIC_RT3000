@@ -1,0 +1,33 @@
+<h1>Hilfsskript (<code>scripts/rt3000_helper.py</code>)</h1>
+<p class="lead">
+  Ein abhängigkeitsfreies Python-3-Werkzeug (ausschließlich Standardbibliothek, kein <code>pip</code> erforderlich) für einen
+  Linux-Rechner im selben LAN (<code>192.168.10.3</code>), das fehleranfällige Prüf-, Backup- und Bereitstellungsschritte automatisiert.
+</p>
+
+<div class="callout tip">
+  <div class="callout-title">Bewusst schreibgeschützt konzipiert</div>
+  <code>rt3000_helper.py</code> <strong>schreibt niemals automatisch in den Flash</strong>. Für Flash-Vorgänge berechnet und druckt
+  das Skript exakte Kopierbefehle inklusive SHA-256-Prüfsummen, damit jeder Prüfschritt vor dem Beschreiben von <code>0:APPSBL_1</code> / <code>0:APPSBL</code> kontrolliert werden kann.
+</div>
+
+<h2 id="commands-overview">Unterbefehle im Überblick</h2>
+
+<h3 id="cmd-probe">1. <code>probe</code> — Live-Erkennung von Hardware &amp; NAND</h3>
+<p>Verbindet sich per Telnet (<code>192.168.10.1:23</code>), startet <code>debugshell</code>, liest <code>0:CDT</code>, <code>0:ART</code>, <code>0:BOOTCONFIG</code>, <code>/proc/mtd</code> sowie sysfs-ECC/OOB-Werte aus und nennt die passenden U-Boot- und OpenWrt-Dateinamen:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py probe --host 192.168.10.1 --check-latest</code></pre></div>
+
+<h3 id="cmd-inspect">2. <code>inspect-backup</code> — Offline-Analyse eines <code>.7z</code>-Backups</h3>
+<p>Decodiert Hardware-Gruppe (<code>HW-A</code>–<code>HW-D</code>), <code>BOOTCONFIG</code>-Selektoren und nicht-sensible <code>0:APPSBLENV</code>-Variablen direkt aus einem vorhandenen MTD-Archiv ganz ohne Router-Verbindung:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py inspect-backup firmware/old_firmware.7z</code></pre></div>
+
+<h3 id="cmd-releases">3. <code>releases</code> — Neueste GitHub-Releases abfragen</h3>
+<p>Fragt GitHub nach den aktuellsten OpenWrt- (<code>FlyFish-go/H3C-RT3000-Product-R1</code>) und U-Boot-Assets (<code>FlyFish-go/IPQ50XX-Uboot</code>) passend zur Hardware-Gruppe ab:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py releases --hw HW-B</code></pre></div>
+
+<h3 id="cmd-backup">4. <code>backup</code> — <code>mtd0</code>–<code>mtd15</code> streamen &amp; verifizieren</h3>
+<p>Startet einen temporären TCP-Empfänger auf <code>192.168.10.3</code>, streamt alle Partitionen von <code>mtd0</code> bis <code>mtd15</code>, prüft Byteanzahl und MD5 gegen den Router, erzeugt <code>md5sums.txt</code> und packt optional ein <code>.7z</code>-Archiv:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z</code></pre></div>
+
+<h3 id="cmd-serve">5. <code>serve</code> — Lokaler HTTP-Server für Images</h3>
+<p>Entpackt ein <code>.7z</code>/<code>.zip</code>-Archiv oder stellt eine einzelne Datei (<code>.mbn</code>, <code>.ubi</code>, <code>sysupgrade.bin</code>) lokal per HTTP bereit und gibt passende <code>wget</code>-, <code>sha256sum</code>- und Flash-Befehle aus:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py serve ~/rt3000-stage/h3c-hw-b.mbn --local-ip 192.168.10.3 --port 8899</code></pre></div>

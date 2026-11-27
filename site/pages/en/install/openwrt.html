@@ -1,0 +1,50 @@
+<h1>Step 3: Flash OpenWrt via U-Boot Web Rescue</h1>
+<p class="lead">
+  With <code>IPQ50XX-Uboot v0.2.0+</code> installed, flash OpenWrt 21.02.7 (QSDK 11.5) into <strong>Slot 2 (<code>rootfs_1</code>)</strong>
+  via the Argon Web Rescue interface so Slot 1 keeps your stock H3C system as a safe fallback.
+</p>
+
+<h2 id="prepare-image">3.1 Prepare &amp; Verify the <code>.ubi</code> Image</h2>
+<p>Download the latest <code>HW-B</code> factory UBI image from <a href="https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases" target="_blank" rel="noopener">FlyFish-go/H3C-RT3000-Product-R1</a> (e.g., <code>H3C-Magic-r14-HW-B-nand-factory.ubi</code>) and verify its SHA-256 checksum:</p>
+<div class="code-block"><pre><code>mkdir -p ~/rt3000-openwrt &amp;&amp; cd ~/rt3000-openwrt
+7z x ~/Downloads/&lt;your-firmware-archive&gt;.7z   # if downloaded as .7z
+sha256sum *.ubi</code></pre></div>
+
+<h2 id="enter-rescue">3.2 Enter the U-Boot Web Rescue Page</h2>
+<ol>
+  <li><strong>Unplug all other cables</strong> (especially <strong>WAN</strong>) and connect a <strong>single Ethernet cable</strong> between your PC and <strong>LAN1</strong>.
+    <em>(On HW-B, <code>ethrotate=no</code> is not pinned, so having WAN plugged in can cause U-Boot to rotate away from LAN during link negotiation.)</em></li>
+  <li>Unplug power from the RT3000.</li>
+  <li>Hold down the <strong>RESET</strong> button <em>(on HW-B, only RESET triggers recovery; WPS/MESH is status-only)</em>.</li>
+  <li>Plug power back in while holding <strong>RESET</strong>.</li>
+  <li>Watch the red LED blink once per second: hold through the <strong>3rd red flash until the LED turns solid green</strong>, then release <strong>RESET</strong>.</li>
+</ol>
+
+<h2 id="open-web-ui">3.3 Open <code>http://192.168.10.1</code></h2>
+<p>
+  uBootKit's built-in DHCP server assigns your PC an address in <code>192.168.10.100</code>–<code>192.168.10.200</code>.
+  If DHCP does not assign one, set a static IP of <code>192.168.10.2</code> (netmask <code>255.255.255.0</code>) and open
+  <strong><code>http://192.168.10.1</code></strong> (plain HTTP, not HTTPS).
+</p>
+
+<div class="callout tip">
+  <div class="callout-title">Blank White Page with Only a Green/Teal Top Bar?</div>
+  Your browser may be reusing cached files from the old H3C UI (also at <code>192.168.10.1</code>) or stalling <code>/main.js</code> over parallel requests.
+  Open an <strong>Incognito / InPrivate</strong> window, load <code>http://192.168.10.1/main.js</code> once, and then open <code>http://192.168.10.1/</code>.
+</div>
+
+<h2 id="flash-slot-2">3.4 Flash OpenWrt into Slot 2 (<code>rootfs_1</code>)</h2>
+<ol>
+  <li>Open <strong>System Info</strong> and confirm <strong>Hardware Family = <code>HW-B</code></strong>, detected NAND model/ECC, and 5 GHz FEM (<code>none → HW-B</code>).</li>
+  <li>Go to <strong>Firmware Update</strong> and select <strong>Slot 2 (<code>rootfs_1</code>, <code>0x3100000</code>)</strong> so Slot 1 (<code>rootfs</code>, <code>0x900000</code>) preserves stock firmware.</li>
+  <li>Upload <code>H3C-Magic-r14-HW-B-nand-factory.ubi</code> and wait for write + verification to finish.</li>
+  <li>Return to <strong>System Info</strong>, click <strong>Set as default</strong> under <strong><code>rootfs_1</code> (Physical slot 2)</strong>, and reboot.</li>
+  <li>Switch your PC Ethernet adapter back to DHCP (if you set a static IP) and wait ~60 seconds for OpenWrt to boot.</li>
+</ol>
+
+<h2 id="post-install">3.5 First Boot Checklist</h2>
+<ul>
+  <li>Set a root password immediately via <code>ssh root@192.168.10.1</code> → <code>passwd</code>.</li>
+  <li>Switch LuCI language from Chinese to English under <strong>System → System → Language and Style</strong>.</li>
+  <li>Change default Wi-Fi SSIDs/passwords under <strong>Network → Wireless</strong> and reconnect your upstream WAN cable.</li>
+</ul>

@@ -1,0 +1,65 @@
+<h1>Step 2: Install IPQ50XX-Uboot v0.2.0+</h1>
+<p class="lead">
+  Replace the stock H3C U-Boot in <code>0:APPSBL</code> (<code>mtd11</code>) and <code>0:APPSBL_1</code> (<code>mtd12</code>).
+  <strong>Do not</strong> upload <code>.mbn</code> files to the stock H3C firmware upgrade page — it only accepts signed vendor packages.
+</p>
+
+<h2 id="option-a-telnet">Option A: Direct Flash via Telnet (No Stock Upgrade Needed)</h2>
+<p>Use this method when Telnet (<code>debugshell</code>) is already enabled on <code>RT3000V100R005L01</code>.</p>
+
+<h3 id="download-and-serve">1. Download, Verify &amp; Serve on <code>192.168.10.3</code></h3>
+<div class="code-block"><pre><code>mkdir -p ~/rt3000-stage &amp;&amp; cd ~/rt3000-stage
+curl -LO https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/download/v0.2.0/h3c-hw-b.mbn
+curl -LO https://github.com/FlyFish-go/IPQ50XX-Uboot/releases/download/v0.2.0/SHA256SUMS
+grep h3c-hw-b.mbn SHA256SUMS | sha256sum -c -
+
+# Serve over LAN and print copy-paste flash commands:
+python3 scripts/rt3000_helper.py serve ~/rt3000-stage/h3c-hw-b.mbn --local-ip 192.168.10.3 --port 8899</code></pre></div>
+
+<h3 id="safety-checks">2. Download &amp; Pre-Flash Safety Checks on Router</h3>
+<div class="code-block"><pre><code>cd /tmp
+wget http://192.168.10.3:8899/h3c-hw-b.mbn -O /tmp/appsbl.mbn
+sha256sum /tmp/appsbl.mbn
+ls -l /tmp/appsbl.mbn
+
+cat /proc/mtd | grep -E "mtd11|mtd12"
+# Expected:
+# mtd11: 00140000 00020000 "0:APPSBL"
+# mtd12: 00140000 00020000 "0:APPSBL_1"
+
+cat /sys/class/mtd/mtd11/bad_blocks /sys/class/mtd/mtd12/bad_blocks
+# Expected: 0 and 0</code></pre></div>
+
+<div class="callout danger">
+  <div class="callout-title">Critical Flash Safety Rules</div>
+  <ul>
+    <li><strong>Never use <code>dd</code> to write to NAND <code>/dev/mtd*</code>!</strong> Always use <code>mtd write</code> (or <code>flash_erase</code> + <code>nandwrite -p</code>).</li>
+    <li>Stop immediately if SHA-256 differs, partition sizes are not <code>00140000</code>, or either slot has non-zero <code>bad_blocks</code>.</li>
+    <li>Always flash the <strong>inactive/backup slot (<code>mtd12</code>) first</strong> and verify readback SHA-256 before touching the active slot (<code>mtd11</code>).</li>
+  </ul>
+</div>
+
+<h3 id="dual-slot-flash">3. Write Backup Slot First, Then Active Slot</h3>
+<div class="code-block"><pre><code>SIZE=$(wc -c &lt; /tmp/appsbl.mbn)
+
+# 1) Write backup copy (mtd12 / 0:APPSBL_1) and verify readback:
+mtd write /tmp/appsbl.mbn /dev/mtd12
+dd if=/dev/mtd12 bs=1 count="$SIZE" 2&gt;/dev/null | sha256sum
+sha256sum /tmp/appsbl.mbn
+
+# 2) ONLY if both SHA-256 hashes match 100%, write active copy (mtd11 / 0:APPSBL):
+mtd write /tmp/appsbl.mbn /dev/mtd11
+dd if=/dev/mtd11 bs=1 count="$SIZE" 2&gt;/dev/null | sha256sum
+sha256sum /tmp/appsbl.mbn
+
+# 3) If BOTH match, sync and reboot:
+sync &amp;&amp; reboot</code></pre></div>
+<p>After rebooting, the router boots back into stock firmware normally via the new U-Boot.</p>
+
+<h2 id="option-b-bootbridge">Option B: BootBridge Web (Browser-Guided Installer)</h2>
+<p>If you prefer FlyFish-go's official browser-guided workflow:</p>
+<ol>
+  <li>Upgrade stock firmware to <strong><code>RT3000V100R015</code></strong> via the H3C stock web UI (BootBridge validates the exact SHA-256 of <code>R015</code>).</li>
+  <li>Open <a href="https://flyfish-go.github.io/IPQ50XX-Uboot/bootbridge/" target="_blank" rel="noopener">BootBridge Web</a>, select <strong>RT3000</strong>, feed it the official <code>RT3000V100R015</code> file to generate a bridge image locally in your browser, and upload that bridge image in the H3C stock web UI.</li>
+  <li>After reboot, open <code>http://192.168.10.1</code> over a LAN cable and follow the wizard (<strong>Detect → Backup → Install</strong>).</li>
+</ol>

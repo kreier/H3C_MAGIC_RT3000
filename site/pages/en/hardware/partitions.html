@@ -1,0 +1,110 @@
+<h1>128 MiB SPI NAND Partition Layout</h1>
+<p class="lead">
+  Exact flash map decoded from this RT3000's <code>0:MIBIB</code> (<code>SYS_PARTI v4</code>) partition table:
+  <strong>21 partitions</strong> covering <strong>125.00 MiB (97.66%)</strong> plus <strong>3.00 MiB (2.34%)</strong> reserved
+  at the tail for NAND bad-block management.
+</p>
+
+<h2 id="interactive-flash-map">Interactive 128 MiB Flash Diagram</h2>
+<p>
+  Hover or click any segment—or any row in the table below—to inspect exact hex offsets, erase block counts, and percentage
+  of the 128 MiB chip. Use the tabs to compare the stock dual-slot layout against the optional single-slot layouts offered by <code>IPQ50XX-Uboot</code>.
+</p>
+
+<div class="card">
+  <div class="flash-header">
+    <div>
+      <strong id="layout-title">128 MiB SPI NAND Layout</strong>
+      <div id="layout-summary" style="font-size:0.83rem;color:var(--muted);margin-top:2px;"></div>
+    </div>
+    <div class="mode-tabs" role="tablist" aria-label="Flash partition layout mode">
+      <button type="button" class="mode-btn active" data-mode="stock">Stock 40+40</button>
+      <button type="button" class="mode-btn" data-mode="m80">Merged 80 MiB</button>
+      <button type="button" class="mode-btn" data-mode="m116">Merged 116 MiB</button>
+    </div>
+  </div>
+
+  <div class="bar-meta">
+    <span><strong>Full 128 MiB Chip</strong> (125.00 MiB / 97.66% allocated · 3.00 MiB / 2.34% unallocated)</span>
+    <span class="mono">0x00000000 → 0x08000000</span>
+  </div>
+  <div id="full-bar" class="flash-bar" role="group" aria-label="Full 128 MiB flash layout"></div>
+  <div class="bar-ticks mono">
+    <span>0 MiB</span>
+    <span>32 MiB (25%)</span>
+    <span>64 MiB (50%)</span>
+    <span>96 MiB (75%)</span>
+    <span>128 MiB</span>
+  </div>
+
+  <div class="zoom-divider">
+    <div class="bar-meta">
+      <span><strong>Zoom: First 9.00 MiB Boot Region</strong> (7.03% of chip · <code>mtd0</code>–<code>mtd14</code>)</span>
+      <span class="mono">0x00000000 → 0x00900000</span>
+    </div>
+    <div id="boot-bar" class="flash-bar boot-bar" role="group" aria-label="First 9 MiB boot partitions"></div>
+    <div class="bar-meta" style="margin-top:0.38rem;margin-bottom:0;">
+      <span>White bottom bar inside <code>APPSBL</code> / <code>APPSBL_1</code> shows actual <code>h3c-hw-b.mbn</code> payload (628.2 KiB = 49.1% of slot).</span>
+      <span><strong>uBootKit:</strong> 2.50 MiB (1.95%)</span>
+    </div>
+  </div>
+
+  <div class="inspector" aria-live="polite">
+    <div class="inspector-top">
+      <div class="inspector-id">
+        <span id="insp-swatch" class="swatch"></span>
+        <strong id="insp-title" class="mono">0:APPSBL</strong>
+        <span id="insp-mtd" class="pill mono">mtd11</span>
+      </div>
+      <div id="insp-metrics" class="inspector-metrics mono"></div>
+    </div>
+    <div class="inspector-bottom">
+      <span id="insp-desc"></span>
+      <span id="insp-range" class="mono"></span>
+    </div>
+  </div>
+
+  <div id="legend" class="legend-grid"></div>
+</div>
+
+<h2 id="all-21-partitions">Complete Partition Table (21 Partitions + Reserve)</h2>
+<p>
+  Every row is synchronized two-way with the diagram above. U-Boot is installed into the highlighted
+  <code>mtd11</code> (<code>0:APPSBL</code>) and <code>mtd12</code> (<code>0:APPSBL_1</code>) slots.
+</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>MTD</th>
+        <th>Name</th>
+        <th>Address Range</th>
+        <th class="num">Size</th>
+        <th class="num">% of 128 MiB</th>
+        <th>Role</th>
+      </tr>
+    </thead>
+    <tbody>
+{{PARTITION_ROWS}}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2">Total (21 partitions + reserve)</td>
+        <td class="mono">0x00000000–0x08000000</td>
+        <td class="num">128.00 MiB</td>
+        <td class="num">100.00%</td>
+        <td>125.00 MiB (97.66%) partitioned · 3.00 MiB (2.34%) BBT reserve</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<h2 id="optional-merged-layouts">Optional Merged Partition Layouts</h2>
+<p>
+  The default <strong>40 + 40 MiB</strong> layout preserves your stock H3C firmware in Slot 1 while OpenWrt runs in Slot 2.
+  If you need space for heavy packages (e.g., OpenClash, PassWall, Tailscale, Docker), the uBootKit Web Rescue page offers two optional single-slot layouts defined in <code>u-boot-2016/lib/rt3000_b_layout.c</code>:
+</p>
+<ul>
+  <li><strong>Merged 80 MiB (<code>83,886,080 B</code> / 62.50%):</strong> Combines <code>rootfs</code> + <code>rootfs_1</code> while leaving vendor partitions untouched.</li>
+  <li><strong>Max 116 MiB (<code>121,634,816 B</code> / 90.63%):</strong> Reclaims <code>rootfs</code>, <code>rootfs_1</code>, <code>pdt_data</code>, <code>pdt_data_1</code>, <code>exp</code>, and <code>plugin</code> into a single 116 MiB UBI volume while keeping the first 9 MiB boot/ART area intact.</li>
+</ul>

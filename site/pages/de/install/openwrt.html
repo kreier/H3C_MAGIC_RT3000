@@ -1,0 +1,50 @@
+<h1>Schritt 3: OpenWrt über die U-Boot-Rettungsseite flashen</h1>
+<p class="lead">
+  Mit installiertem <code>IPQ50XX-Uboot v0.2.0+</code> wird OpenWrt 21.02.7 (QSDK 11.5) bequem über die Argon-Rettungsseite
+  in <strong>Slot 2 (<code>rootfs_1</code>)</strong> geflasht, sodass Slot 1 das originale H3C-System als Rückfallebene behält.
+</p>
+
+<h2 id="prepare-image">3.1 <code>.ubi</code>-Image vorbereiten &amp; prüfen</h2>
+<p>Lade das passende <code>HW-B</code>-Factory-UBI aus <a href="https://github.com/FlyFish-go/H3C-RT3000-Product-R1/releases" target="_blank" rel="noopener">FlyFish-go/H3C-RT3000-Product-R1</a> (z. B. <code>H3C-Magic-r14-HW-B-nand-factory.ubi</code>) herunter und prüfe die SHA-256-Prüfsumme:</p>
+<div class="code-block"><pre><code>mkdir -p ~/rt3000-openwrt &amp;&amp; cd ~/rt3000-openwrt
+7z x ~/Downloads/&lt;firmware-archiv&gt;.7z   # falls als .7z heruntergeladen
+sha256sum *.ubi</code></pre></div>
+
+<h2 id="enter-rescue">3.2 U-Boot-Web-Rettungsseite starten</h2>
+<ol>
+  <li><strong>Alle anderen Kabel abziehen</strong> (insbesondere <strong>WAN</strong>) und den PC mit genau <strong>einem Ethernet-Kabel an LAN1</strong> verbinden.
+    <em>(Auf HW-B ist <code>ethrotate=no</code> nicht fixiert — ein angeschlossenes WAN-Kabel kann dazu führen, dass U-Boot während der Link-Aushandlung vom LAN-Port wegschaltet.)</em></li>
+  <li>Stromkabel vom RT3000 abziehen.</li>
+  <li>Die <strong>RESET</strong>-Taste gedrückt halten <em>(auf HW-B löst nur RESET den Recovery-Modus aus; WPS/MESH dient nur zur Statusanzeige)</em>.</li>
+  <li>Stromkabel bei gedrückter <strong>RESET</strong>-Taste wieder einstecken.</li>
+  <li>Die rote LED blinkt im Sekundentakt: bis zum <strong>3. roten Blinken halten, bis die LED dauerhaft grün leuchtet</strong>, dann loslassen.</li>
+</ol>
+
+<h2 id="open-web-ui">3.3 <code>http://192.168.10.1</code> im Browser öffnen</h2>
+<p>
+  Der eingebaute DHCP-Server von uBootKit vergibt automatisch eine IP aus <code>192.168.10.100</code>–<code>192.168.10.200</code>.
+  Falls keine DHCP-Adresse zugewiesen wird, vergebe statisch <code>192.168.10.2</code> (Subnetzmaske <code>255.255.255.0</code>) und öffne
+  <strong><code>http://192.168.10.1</code></strong> (per <code>http://</code>, nicht <code>https://</code>).
+</p>
+
+<div class="callout tip">
+  <div class="callout-title">Weiße Seite mit nur einem grünen Balken oben?</div>
+  Der Browser nutzt möglicherweise alte Cache-Dateien der H3C-Oberfläche (ebenfalls auf <code>192.168.10.1</code>) oder bricht <code>/main.js</code> bei parallelen Anfragen ab.
+  Öffne ein <strong>Inkognito-/Privat-Fenster</strong>, rufe einmal <code>http://192.168.10.1/main.js</code> auf und öffne danach <code>http://192.168.10.1/</code>.
+</div>
+
+<h2 id="flash-slot-2">3.4 OpenWrt in Slot 2 (<code>rootfs_1</code>) flashen</h2>
+<ol>
+  <li>Prüfe unter <strong>System Info</strong>: <strong>Hardware Family = <code>HW-B</code></strong>, automatisch erkanntes NAND-Modell/ECC und 5-GHz-FEM (<code>none → HW-B</code>).</li>
+  <li>Wechsle zu <strong>Firmware Update</strong> und wähle <strong>Slot 2 (<code>rootfs_1</code>, <code>0x3100000</code>)</strong>, damit Slot 1 (<code>rootfs</code>, <code>0x900000</code>) das Originalsystem behält.</li>
+  <li>Lade <code>H3C-Magic-r14-HW-B-nand-factory.ubi</code> hoch und warte auf den Abschluss von Schreiben und Verifikation.</li>
+  <li>Gehe zurück zu <strong>System Info</strong>, klicke bei <strong><code>rootfs_1</code> (Physical slot 2)</strong> auf <strong>Set as default</strong> und starte neu.</li>
+  <li>Stelle deinen Netzwerkadapter ggf. wieder auf DHCP zurück und warte ~60 Sekunden auf den ersten Start von OpenWrt.</li>
+</ol>
+
+<h2 id="post-install">3.5 Checkliste nach dem ersten Start</h2>
+<ul>
+  <li>Sofort ein Root-Passwort per <code>ssh root@192.168.10.1</code> → <code>passwd</code> vergeben.</li>
+  <li>LuCI-Sprache unter <strong>System → System → Language and Style</strong> auf <code>auto</code> / Englisch umstellen.</li>
+  <li>Standard-WLAN-SSIDs/Passwörter unter <strong>Network → Wireless</strong> ändern und das WAN-Kabel wieder anschließen.</li>
+</ul>

@@ -1,0 +1,46 @@
+<h1>Schritt 1: Telnet aktivieren &amp; MTD-Backup erstellen</h1>
+<p class="lead">
+  Bevor U-Boot oder OpenWrt geflasht werden, schalten wir über die Original-Firmware die <code>debugshell</code> per Telnet frei
+  und sichern alle Partitionen <code>mtd0</code>–<code>mtd15</code> (einschließlich der gerätespezifischen WLAN-Kalibrierung <code>0:ART</code>).
+</p>
+
+<h2 id="activate-telnet">1.1 Telnet über <code>RT3000.cfg</code> freischalten</h2>
+<ol>
+  <li>In der H3C-Weboberfläche (<code>http://192.168.10.1</code>) unten von 简化版 (Basis) auf <strong>专业版 (Profimodus)</strong> umschalten.</li>
+  <li>Links <strong>设备管理 (Geräteverwaltung)</strong> → <strong>配置管理 (Konfigurationsverwaltung)</strong> wählen.</li>
+  <li>Mit <strong>备份 (Backup)</strong> die Klartextdatei <code>RT3000.cfg</code> herunterladen.</li>
+  <li>Zeile 31 auf <code>telnetenable=enable</code> ändern:</li>
+</ol>
+<div class="code-block"><pre><code>@telnet
+#
+	telnetenable=enable</code></pre></div>
+<ol start="5">
+  <li>Die geänderte <code>RT3000.cfg</code> über <strong>恢复 (Wiederherstellen)</strong> hochladen und anwenden lassen.</li>
+  <li>Per Telnet verbinden und mit <code>debugshell</code> in die BusyBox-Root-Shell wechseln:</li>
+</ol>
+<div class="code-block"><pre><code>telnet 192.168.10.1 23
+# Am Prompt &lt;H3C_RT3000&gt;:
+debugshell</code></pre></div>
+
+<h2 id="automated-backup">1.2 Automatisiertes Komplett-Backup (Empfohlen)</h2>
+<p>Vom Linux-Rechner (<code>192.168.10.3</code> im selben LAN) streamt das Hilfsskript <code>mtd0</code>–<code>mtd15</code> per TCP und prüft Bytegröße sowie MD5-Prüfsumme jeder einzelnen Partition:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z</code></pre></div>
+
+<div class="callout warn">
+  <div class="callout-title">Backup sicher und privat aufbewahren</div>
+  Das Backup-Archiv enthält individuelle WLAN-Kalibrierdaten (<code>0:ART</code>), MAC-Adressen und die Seriennummer deines Geräts.
+  Niemals öffentlich teilen und vor jedem Schreibzugriff auf den Flash sicher aufbewahren.
+</div>
+
+<h2 id="manual-backup">1.3 Manuelles Streaming-Backup mit <code>dd</code> + <code>nc</code></h2>
+<p>Da <code>mtd15</code> (<code>rootfs</code>) mit 40 MiB zu groß für <code>/tmp</code> im Router-RAM ist, wird direkt an <code>192.168.10.3</code> gestreamt:</p>
+<div class="code-block"><pre><code># Auf dem Linux-Rechner (192.168.10.3):
+nc -l -p 9000 &gt; mtd15_rootfs.bin
+
+# In der Router-debugshell (192.168.10.1):
+dd if=/dev/mtd15 bs=4096 | nc 192.168.10.3 9000
+dd if=/dev/mtd15 bs=4096 | md5sum</code></pre></div>
+<p>
+  Prüfe, dass <code>mtd15_rootfs.bin</code> exakt <code>41.943.040</code> Bytes (40 MiB) groß ist und die <code>md5sum</code> übereinstimmt.
+  Wiederhole den Vorgang für <code>mtd0</code>–<code>mtd14</code> (insbesondere <code>0:SBL1</code>, <code>0:MIBIB</code>, <code>0:BOOTCONFIG*</code>, <code>0:CDT</code>, <code>0:APPSBLENV</code>, <code>0:APPSBL*</code> und <code>0:ART</code>).
+</p>

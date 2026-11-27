@@ -1,0 +1,68 @@
+<h1>Dual-Boot-Umschaltung &amp; künftige Updates</h1>
+<p class="lead">
+  Wechsle jederzeit ohne PC per <strong>RESET</strong>-Taste zwischen Original-Firmware (Slot 1) und OpenWrt 21.02.7 (Slot 2)
+  und halte OpenWrt über reguläre Sysupgrades aktuell.
+</p>
+
+<h2 id="led-timing">Interaktive LED-Zeittabelle für Dual-Boot (HW-B)</h2>
+<p>
+  Halte beim Einstecken des Stromkabels die <strong>RESET</strong>-Taste gedrückt <em>(auf HW-B/HW-C nur RESET; auf HW-A/HW-D funktioniert auch Mesh/WPS)</em>
+  und lasse je nach Anzahl der roten Blinksignale los. Klicke eine Karte an, um Details zu sehen:
+</p>
+
+<div class="led-grid">
+  <button type="button" class="led-btn" data-detail="Normaler Start: U-Boot startet den aktuell in 0:BOOTCONFIG gespeicherten Standard-Slot.">
+    <div class="led-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="led-title">Vor dem 1. Blinken</div>
+    <div class="led-sub">Normaler Standard-Start</div>
+  </button>
+  <button type="button" class="led-btn" data-detail="Startet Slot 1 (rootfs @ 0x00900000 — originale H3C-Firmware Chaos Calmer 15.05) und speichert Slot 1 als Standard in 0:BOOTCONFIG.">
+    <div class="led-dots"><span class="dot red"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="led-title">Nach dem 1. roten Blinken</div>
+    <div class="led-sub">Start Slot 1 (Original)</div>
+  </button>
+  <button type="button" class="led-btn active" data-detail="Startet Slot 2 (rootfs_1 @ 0x03100000 — OpenWrt 21.02.7 / QSDK 11.5) und speichert Slot 2 als Standard in 0:BOOTCONFIG.">
+    <div class="led-dots"><span class="dot red"></span><span class="dot red"></span><span class="dot"></span></div>
+    <div class="led-title">Nach dem 2. roten Blinken</div>
+    <div class="led-sub">Start Slot 2 (OpenWrt)</div>
+  </button>
+  <button type="button" class="led-btn" data-detail="LED leuchtet dauerhaft grün: Startet den uBootKit-Web-Rettungsserver und DHCP unter http://192.168.10.1 (PC nur an LAN1 anschließen).">
+    <div class="led-dots"><span class="dot red"></span><span class="dot red"></span><span class="dot green"></span></div>
+    <div class="led-title">Nach dem 3. Blinken → Grün</div>
+    <div class="led-sub">Web-Rettung (192.168.10.1)</div>
+  </button>
+</div>
+<div id="led-detail" class="callout" style="margin-top:0.4rem;">
+  Startet Slot 2 (<code>rootfs_1</code> @ <code>0x03100000</code> — OpenWrt 21.02.7 / QSDK 11.5) und speichert Slot 2 als Standard in <code>0:BOOTCONFIG</code>.
+</div>
+
+<h2 id="future-upgrades">OpenWrt später aktualisieren</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Methode</th><th>Image-Datei</th><th>Einstellungen behalten?</th><th>Geeignet für</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>In OpenWrt (LuCI)</strong><br /><em>System → Backup / Flash Firmware</em></td>
+        <td><code>H3C-Magic-r&lt;N&gt;-HW-B-sysupgrade.bin</code><br />(oder integriertes <em>Online-Update</em>)</td>
+        <td><strong>Ja</strong> (mit <em>Keep settings</em>)</td>
+        <td>Reguläre Updates auf künftige <code>r15+</code>-QSDK-Builds im 40-MiB-Slot 2, ohne Slot 1 anzutasten.</td>
+      </tr>
+      <tr>
+        <td><strong>U-Boot-Web-Rettungsseite</strong><br />(RESET bis 3× rot halten)</td>
+        <td><code>*-nand-factory.ubi</code></td>
+        <td>Nein (saubere Neuinstallation)</td>
+        <td>Saubere Neuinstallationen, Rettung bei Fehlkonfiguration oder Wechsel der Firmware-Familie (z. B. Mainline OpenWrt 24.10).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="single-slot-tradeoff">40+40 MiB Dual-Boot vs. 80 / 116 MiB Einzelslot</h2>
+<p>
+  Falls der 40-MiB-Speicher in Slot 2 später zu klein wird, lässt sich auf der uBootKit-Rettungsseite vor dem Flashen einer <code>.ubi</code>-Datei
+  auf das <strong>80-MiB-</strong> oder <strong>116-MiB-Layout</strong> umschalten (siehe Vergleich im
+  <a href="../hardware/partitions.html">128-MiB-Partitionslayout</a>). Dabei wird zwar das H3C-Originalsystem in Slot 1 gelöscht,
+  über dein <code>old_firmware.7z</code>-Backup und die Web-Rettungsseite bleibt eine Wiederherstellung aber jederzeit möglich.
+</p>

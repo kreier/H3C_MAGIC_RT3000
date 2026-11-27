@@ -1,0 +1,46 @@
+<h1>Step 1: Activate Telnet &amp; Back Up MTD Partitions</h1>
+<p class="lead">
+  Before modifying U-Boot or flashing OpenWrt, unlock <code>debugshell</code> via Telnet on the stock H3C firmware and create
+  a verified backup of <code>mtd0</code>–<code>mtd15</code> (preserving your unit's unique <code>0:ART</code> Wi-Fi calibration and MACs).
+</p>
+
+<h2 id="activate-telnet">1.1 Enable Telnet via <code>RT3000.cfg</code></h2>
+<ol>
+  <li>Log into the stock H3C web UI (<code>http://192.168.10.1</code>) and switch from 简化版 (Basic Mode) to <strong>专业版 (Pro Mode)</strong> at the bottom.</li>
+  <li>In the left menu, click <strong>设备管理 (Device Management)</strong> → <strong>配置管理 (Configuration Management)</strong>.</li>
+  <li>Click <strong>备份 (Backup)</strong> to download the plaintext <code>RT3000.cfg</code>.</li>
+  <li>Edit line 31 so <code>telnetenable</code> is set to <code>enable</code>:</li>
+</ol>
+<div class="code-block"><pre><code>@telnet
+#
+	telnetenable=enable</code></pre></div>
+<ol start="5">
+  <li>Upload the edited <code>RT3000.cfg</code> under <strong>恢复 (Restore)</strong> and wait for the router to apply it.</li>
+  <li>Connect via Telnet and enter BusyBox root ash with <code>debugshell</code>:</li>
+</ol>
+<div class="code-block"><pre><code>telnet 192.168.10.1 23
+# At the &lt;H3C_RT3000&gt; prompt:
+debugshell</code></pre></div>
+
+<h2 id="automated-backup">1.2 Automated Full Backup (Recommended)</h2>
+<p>From your Linux machine (<code>192.168.10.3</code> on the same LAN), stream <code>mtd0</code>–<code>mtd15</code> directly over TCP and verify every partition's exact byte size and MD5 checksum:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z</code></pre></div>
+
+<div class="callout warn">
+  <div class="callout-title">Keep Your Backup Private &amp; Safe</div>
+  Your backup archive contains your router's unique Wi-Fi calibration data (<code>0:ART</code>), MAC addresses, and serial number.
+  Never publish it publicly, and keep a copy before touching flash.
+</div>
+
+<h2 id="manual-backup">1.3 Manual Streaming Backup via <code>dd</code> + <code>nc</code></h2>
+<p>Because <code>mtd15</code> (<code>rootfs</code>) is 40 MiB and too large for the router's RAM <code>/tmp</code>, stream it directly to <code>192.168.10.3</code>:</p>
+<div class="code-block"><pre><code># On Linux host (192.168.10.3):
+nc -l -p 9000 &gt; mtd15_rootfs.bin
+
+# On router debugshell (192.168.10.1):
+dd if=/dev/mtd15 bs=4096 | nc 192.168.10.3 9000
+dd if=/dev/mtd15 bs=4096 | md5sum</code></pre></div>
+<p>
+  Confirm <code>mtd15_rootfs.bin</code> is exactly <code>41,943,040</code> bytes (40 MiB) and matches the router's <code>md5sum</code>.
+  Repeat for <code>mtd0</code>–<code>mtd14</code> (especially <code>0:SBL1</code>, <code>0:MIBIB</code>, <code>0:BOOTCONFIG*</code>, <code>0:CDT</code>, <code>0:APPSBLENV</code>, <code>0:APPSBL*</code>, and <code>0:ART</code>).
+</p>

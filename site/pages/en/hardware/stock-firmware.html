@@ -1,0 +1,40 @@
+<h1>Original Stock Firmware (QSDK 4.4 / Chaos Calmer)</h1>
+<p class="lead">
+  Before migrating to OpenWrt 21.02.7, the China Telecom H3C Magic RT3000 ships with stock firmware
+  <code>RT3000V100R005L01</code> — built on <strong>OpenWrt Chaos Calmer 15.05</strong> (2015) and Qualcomm QSDK 4.4 (Linux <code>4.4.60</code>).
+</p>
+
+<h2 id="stock-web-ui">Stock Web Interface</h2>
+<p>The factory H3C admin interface defaults to Basic Mode (简化版). Switching to Pro Mode (专业版) unlocks configuration backup/restore for enabling Telnet:</p>
+<img class="screenshot" src="{{ROOT}}assets/landing_page.jpg" alt="Original H3C Magic RT3000 stock web interface screenshot" />
+
+<h2 id="recorded-device-info">Recorded Stock System Info</h2>
+<div class="code-block"><pre><code>产品型号：   H3C Magic RT3000
+软件版本：   RT3000V100R005L01
+Bootrom版本：100
+硬件版本：   VER.A
+系统资源：   CPU使用：15.0%   内存使用：58.7%
+端口状态：   LAN1 / LAN2 / LAN3 / WAN (1000M 全双工)</code></pre></div>
+
+<h2 id="debugshell-banner">Telnet <code>debugshell</code> Environment</h2>
+<p>Connecting via Telnet (<code>telnet 192.168.10.1 23</code>) and running <code>debugshell</code> drops into BusyBox 1.30.1 ash running a 32-bit ARMv7 kernel:</p>
+<div class="code-block"><pre><code>&lt;H3C_RT3000&gt;debugshell
+
+BusyBox v1.30.1 () built-in shell (ash)
+ ---------------------------------------------------------------
+   For those about to rock... (Chaos Calmer, unknown)
+ ---------------------------------------------------------------
+root@OpenWrt:/# uname -a
+Linux OpenWrt 4.4.60 #1 SMP PREEMPT Sat Aug 20 13:36:05 CST 2022 armv7l GNU/Linux</code></pre></div>
+
+<h2 id="stock-env">Non-Sensitive U-Boot Environment (<code>0:APPSBLENV</code>)</h2>
+<p>Inspected offline from <code>firmware/old_firmware.7z</code> via <code>rt3000_helper.py inspect-backup</code>:</p>
+<div class="code-block"><pre><code>baudrate=115200
+bootcmd=bootipq
+bootdelay=1
+bootversion=100
+hardversion=VER.A
+ipaddr=192.168.10.10
+netmask=255.255.255.0
+productname=RT3000
+bootargs=console=ttyMSM0,115200n8 cnss2.bdf_integrated=0x10 cnss2.bdf_pci0=0x50 cnss2.bdf_pci1=0x60 cnss2.skip_radio_bmap=4 loglevel=3</code></pre></div>

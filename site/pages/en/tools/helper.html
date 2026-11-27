@@ -1,0 +1,33 @@
+<h1>Helper Script (<code>scripts/rt3000_helper.py</code>)</h1>
+<p class="lead">
+  A pure Python 3 standard-library automation script (zero <code>pip</code> dependencies) designed to run on a Linux host
+  on the same LAN (<code>192.168.10.3</code>) to eliminate manual errors during probing, backing up, and serving firmware images.
+</p>
+
+<div class="callout tip">
+  <div class="callout-title">Read-Only by Design</div>
+  <code>rt3000_helper.py</code> <strong>never writes to flash automatically</strong> over Telnet. For flashing, it computes and prints
+  exact copy-paste commands with verified SHA-256 digests so you can confirm every check before erasing <code>0:APPSBL_1</code> / <code>0:APPSBL</code>.
+</div>
+
+<h2 id="commands-overview">Subcommands Reference</h2>
+
+<h3 id="cmd-probe">1. <code>probe</code> — Live Hardware &amp; NAND Discovery</h3>
+<p>Connects over Telnet (<code>192.168.10.1:23</code>), enters <code>debugshell</code>, reads <code>0:CDT</code>, <code>0:ART</code>, <code>0:BOOTCONFIG</code>, <code>/proc/mtd</code>, and sysfs ECC/OOB parameters, and prints exact recommended U-Boot &amp; OpenWrt filenames:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py probe --host 192.168.10.1 --check-latest</code></pre></div>
+
+<h3 id="cmd-inspect">2. <code>inspect-backup</code> — Offline <code>.7z</code> Backup Analysis</h3>
+<p>Decodes board group (<code>HW-A</code>–<code>HW-D</code>), <code>BOOTCONFIG</code> slot selectors, and non-sensitive <code>0:APPSBLENV</code> variables directly from an existing MTD <code>.7z</code> archive without connecting to the router:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py inspect-backup firmware/old_firmware.7z</code></pre></div>
+
+<h3 id="cmd-releases">3. <code>releases</code> — Query Latest GitHub Releases</h3>
+<p>Queries GitHub for the newest OpenWrt (<code>FlyFish-go/H3C-RT3000-Product-R1</code>) and U-Boot (<code>FlyFish-go/IPQ50XX-Uboot</code>) assets filtered for your hardware group:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py releases --hw HW-B</code></pre></div>
+
+<h3 id="cmd-backup">4. <code>backup</code> — Stream &amp; Verify <code>mtd0</code>–<code>mtd15</code></h3>
+<p>Opens an ephemeral TCP listener on <code>192.168.10.3</code>, streams every partition from <code>mtd0</code> through <code>mtd15</code>, verifies exact byte length and MD5 against the router, writes <code>md5sums.txt</code>, and optionally packs a <code>.7z</code> archive:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z</code></pre></div>
+
+<h3 id="cmd-serve">5. <code>serve</code> — Local HTTP Firmware Staging</h3>
+<p>Extracts a <code>.7z</code>/<code>.zip</code> or stages a single file (<code>.mbn</code>, <code>.ubi</code>, <code>sysupgrade.bin</code>), prints SHA-256 digests and exact router commands, and serves the directory over HTTP on your LAN:</p>
+<div class="code-block"><pre><code>python3 scripts/rt3000_helper.py serve ~/rt3000-stage/h3c-hw-b.mbn --local-ip 192.168.10.3 --port 8899</code></pre></div>

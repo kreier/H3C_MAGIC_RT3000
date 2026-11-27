@@ -1,0 +1,75 @@
+<h1>H3C Magic RT3000 (HW-B) — OpenWrt 21.02.7 Handbuch</h1>
+<p class="lead">
+  Vollständige Dokumentation für den Umstieg des China-Telecom-Routers <strong>H3C Magic RT3000 (HW-B)</strong> von der
+  11 Jahre alten Original-Firmware (Chaos Calmer 15.05) auf <strong>OpenWrt 21.02.7 (QSDK 11.5 mit NSS-Hardwarebeschleunigung)</strong>
+  mit <a href="https://github.com/FlyFish-go/IPQ50XX-Uboot" target="_blank" rel="noopener">IPQ50XX-Uboot v0.2.0+</a> —
+  inklusive erhaltenem Werks-Dual-Boot.
+</p>
+
+<div class="spec-grid">
+  <div class="spec-card">
+    <div class="spec-label">SoC &amp; Switch</div>
+    <div class="spec-value">IPQ5000 + QCA8337</div>
+    <div class="spec-detail">Dual Cortex-A53 (32-Bit OS) · MP02.1</div>
+  </div>
+  <div class="spec-card">
+    <div class="spec-label">RAM &amp; SPI NAND</div>
+    <div class="spec-value">256 MiB / 128 MiB</div>
+    <div class="spec-detail">1.024 × 128-KiB-Blöcke · 21 MIBIB-Partitionen</div>
+  </div>
+  <div class="spec-card">
+    <div class="spec-label">Bootloader</div>
+    <div class="spec-value">IPQ50XX-Uboot v0.2.0</div>
+    <div class="spec-detail">Auto NAND/ECC · Argon Web-Rettungsseite</div>
+  </div>
+  <div class="spec-card">
+    <div class="spec-label">Ziel-Firmware</div>
+    <div class="spec-value">OpenWrt 21.02.7</div>
+    <div class="spec-detail">QSDK 11.5 · ~940 Mbit/s NSS-NAT</div>
+  </div>
+</div>
+
+<h2 id="documentation-map">Dokumentationsübersicht</h2>
+<p>Statt alle Hardware-Details, Partitionstabellen und Befehle in eine einzige README-Datei zu pressen, ist das Projekt systematisch gegliedert:</p>
+
+<div class="nav-cards">
+  <a class="nav-card" href="hardware/">
+    <h3>Hardware &amp; Varianten</h3>
+    <p>HW-A/B/C/D über <code>0:CDT</code> und <code>0:ART</code> eindeutig bestimmen, NAND/ECC prüfen und Fehlflashes vermeiden.</p>
+  </a>
+  <a class="nav-card" href="hardware/partitions.html">
+    <h3>128-MiB-Partitionslayout</h3>
+    <p>Interaktives Flash-Diagramm mit Hover-Details, 9-MiB-Boot-Zoom, Layout-Umschalter (40+40 / 80 / 116 MiB) und alle 21 Partitionen.</p>
+  </a>
+  <a class="nav-card" href="bootloader/">
+    <h3>uBootKit-Herkunft &amp; Aufbau</h3>
+    <p>Open-Source-Abstammung von QSDK 12.5 und <code>chenxin527/uBootKit</code> bis <code>IPQ50XX-Uboot</code> sowie APPSBL-Belegung.</p>
+  </a>
+  <a class="nav-card" href="install/telnet-backup.html">
+    <h3>Schritt-für-Schritt-Installation</h3>
+    <p>Telnet aktivieren, vollständiges MTD-Backup sichern, U-Boot sicher in beide APPSBL-Slots schreiben und OpenWrt in Slot 2 installieren.</p>
+  </a>
+  <a class="nav-card" href="use/dual-boot.html">
+    <h3>Dual-Boot &amp; Updates</h3>
+    <p>Interaktive LED-Zeittabelle zum Umschalten zwischen Original-Firmware und OpenWrt ohne PC sowie spätere LuCI-Updates.</p>
+  </a>
+  <a class="nav-card" href="tools/helper.html">
+    <h3>Python-Hilfsskript</h3>
+    <p>Hardware-Abfrage, Offline-Backup-Analyse, MTD-Streaming-Backup und lokaler HTTP-Server mit <code>rt3000_helper.py</code>.</p>
+  </a>
+</div>
+
+<h2 id="upstream-repositories">Upstream-Repositories</h2>
+<ul>
+  <li><strong>OpenWrt 21.02.7 / QSDK 11.5 Firmware:</strong> <a href="https://github.com/FlyFish-go/H3C-RT3000-Product-R1" target="_blank" rel="noopener">FlyFish-go/H3C-RT3000-Product-R1</a></li>
+  <li><strong>U-Boot (empfohlen, <code>v0.2.0+</code> — automatische NAND-/ECC-Erkennung):</strong> <a href="https://github.com/FlyFish-go/IPQ50XX-Uboot" target="_blank" rel="noopener">FlyFish-go/IPQ50XX-Uboot</a> (<a href="https://flyfish-go.github.io/IPQ50XX-Uboot/en/" target="_blank" rel="noopener">Offizielle Anleitung</a>)</li>
+  <li><strong>Älteres U-Boot (<code>v0.1.0</code>, veraltet):</strong> <a href="https://github.com/FlyFish-go/H3C-NX30-Uboot" target="_blank" rel="noopener">FlyFish-go/H3C-NX30-Uboot</a> — für Neuinstallationen nicht mehr nötig.</li>
+  <li><strong>Upstream uBootKit:</strong> <a href="https://github.com/chenxin527/uboot-qsdk12.5-build" target="_blank" rel="noopener">chenxin527/uboot-qsdk12.5-build</a></li>
+</ul>
+
+<h2 id="network-setup">Referenz-Netzwerkaufbau</h2>
+<ul>
+  <li><strong>Router (H3C Magic RT3000):</strong> <code>192.168.10.1</code> — PC per Ethernet-Kabel an einen <strong>LAN</strong>-Port anschließen (sowohl U-Boot-Rettungsseite als auch OpenWrt LuCI laufen auf LAN).</li>
+  <li><strong>Linux-Hilfsrechner:</strong> <code>192.168.10.3</code> im selben LAN (<code>192.168.10.0/24</code>).</li>
+  <li><strong>Automatisierung:</strong> <a href="tools/helper.html"><code>scripts/rt3000_helper.py</code></a> (reine Python-3-Standardbibliothek, keine externen Pakete).</li>
+</ul>

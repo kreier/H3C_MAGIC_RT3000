@@ -2,6 +2,9 @@
 
 Updated firmware for the H3C Magic RT3000 HW-B from China Telecom to OpenWRT 21.02.7 QSDK 11.5
 
+> [!TIP]
+> **Interactive Guide & 128 MiB Flash Map:** View the dedicated GitHub Pages site at [https://kreier.github.io/H3C_MAGIC_RT3000/](https://kreier.github.io/H3C_MAGIC_RT3000/) (built from [`site/`](site/) via [`.github/workflows/pages.yml`](.github/workflows/pages.yml)) for an interactive hoverable 128 MiB SPI NAND partition diagram, layout switcher, LED dual-boot timing reference, and copyable shell commands.
+
 ## OpenWRT 21.02.7 based on QSDK 11.5 with Hardware acceleration
 
 Upstream repositories:

@@ -1,0 +1,108 @@
+<h1>Hardware &amp; Board Variants (HW-A / B / C / D)</h1>
+<p class="lead">
+  The H3C Magic RT3000 shares its casing and <code>VER.A</code> label across multiple different PCBs.
+  Always identify your exact Hardware Group from <code>0:CDT</code> and <code>0:ART</code> before flashing U-Boot or OpenWrt.
+</p>
+
+<h2 id="core-specifications">Core Hardware Specifications</h2>
+<ul>
+  <li><strong>CPU:</strong> Qualcomm IPQ5000 (HW-B / HW-D) or IPQ5018 (HW-A / HW-C), dual Cortex-A53 running a 32-bit ARMv7 OS.</li>
+  <li><strong>Switch:</strong> QCA8337 (HW-A / B / D) or RTL8367S (HW-C) — 1× Gigabit WAN + 3× Gigabit LAN.</li>
+  <li><strong>Memory:</strong> 256 MiB RAM.</li>
+  <li><strong>Storage:</strong> 128 MiB SPI NAND flash (1,024 erase blocks × 128 KiB, 2,048 B page size; e.g., GigaDevice <code>GD5F1GQ5REYIG</code> or Winbond <code>W25N01GW</code>).</li>
+</ul>
+
+<h2 id="board-groups">Identifying Your Hardware Group</h2>
+<div class="callout danger">
+  <div class="callout-title">Do Not Trust the Case Sticker</div>
+  The stock web UI string <code>VER.A</code> and case stickers (<code>D0</code> / <code>B0</code> / <code>C1</code>) do <strong>not</strong>
+  reliably identify your board group. Flashing the wrong group (<code>HW-A</code>–<code>HW-D</code>) can brick the router and require a UART/TTL adapter to recover.
+</div>
+
+<p>Read <code>/proc/device-tree/model</code>, the 5-byte platform tuple in <code>0:CDT</code> (<code>mtd8</code> @ <code>0x1a</code>), and—if <code>machid</code> is <code>0x08040000</code>—the 5 GHz calibration header in <code>0:ART</code> (<code>mtd13</code> @ <code>0x26800</code>):</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Hardware Group</th>
+        <th>Device Tree / FDT</th>
+        <th>CDT Tuple (<code>0x1a..0x1e</code>) → <code>machid</code></th>
+        <th>SoC &amp; Switch</th>
+        <th><code>0:ART</code> @ <code>0x26800</code> (<code>+0x00</code>, <code>+0x3a</code>, <code>+0x45</code>)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>HW-A</strong></td><td><code>AP-MP03.1</code></td><td class="mono">02 08 04 00 01 → 0x08040001</td><td>IPQ5018 + QCA8337</td><td>—</td></tr>
+      <tr class="uboot-row"><td><strong>HW-B</strong></td><td><code>AP-MP02.1</code></td><td class="mono">02 08 04 00 00 → 0x08040000</td><td>IPQ5000 + QCA8337</td><td class="mono">01 00 04 04, 0x50, 0x01 (no external 5 GHz FEM)</td></tr>
+      <tr><td><strong>HW-C</strong></td><td><code>AP-MP03.1-C2</code></td><td class="mono">02 08 04 01 01 → 0x08040101</td><td>IPQ5018 + RTL8367S</td><td>—</td></tr>
+      <tr><td><strong>HW-D</strong></td><td><code>AP-MP02.1</code></td><td class="mono">02 08 04 00 00 → 0x08040000</td><td>IPQ5000 + QCA8337</td><td class="mono">01 00 04 04, 0x60, 0x09 (external 5 GHz FEM, e.g. NX30)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p>For this project's RT3000 (verified from <code>firmware/old_firmware.7z</code>):</p>
+<ul>
+  <li><code>0:CDT</code> tuple is <code>02 08 04 00 00</code> → <code>machid = 0x08040000</code> (<code>AP-MP02.1</code>).</li>
+  <li><code>0:ART</code> @ <code>0x26800</code> has header <code>01 00 04 04</code>, <code>+0x3a = 0x50</code>, <code>+0x45 = 0x01</code> → <strong>no external 5 GHz FEM → <code>HW-B</code></strong>.</li>
+</ul>
+
+<h2 id="probe-commands">Read-Only Probe Commands</h2>
+<p>Run inside <code>debugshell</code> on the router (or automate everything from <code>192.168.10.3</code> with <code>python3 scripts/rt3000_helper.py probe</code>):</p>
+<div class="code-block"><pre><code># 1. Kernel, device tree model, and MTD partition layout
+uname -a
+cat /proc/device-tree/model; echo
+cat /proc/mtd
+fw_printenv
+
+# 2. Board machid from 0:CDT (mtd8) and 5 GHz FEM flag from 0:ART (mtd13 @ 0x26800)
+dd if=/dev/mtd8 bs=2048 count=1 2&gt;/dev/null | dd bs=64 count=1 2&gt;/dev/null | hexdump -C
+dd if=/dev/mtd13 bs=2048 skip=77 count=1 2&gt;/dev/null | dd bs=80 count=1 2&gt;/dev/null | hexdump -C
+
+# 3. NAND geometry, OOB size, and ECC strength
+dmesg | grep -iE "nand:|spi|mtd|ipq|switch|qca|rtl"
+for f in name writesize erasesize oobsize ecc_strength; do
+    printf "%-14s: %s\n" "$f" "$(cat /sys/class/mtd/mtd0/$f 2&gt;/dev/null)"
+done</code></pre></div>
+
+<h2 id="nand-auto-detection">NAND Chip &amp; ECC Auto-Detection</h2>
+<p>
+  With <strong><code>IPQ50XX-Uboot</code> <code>v0.2.0+</code></strong>, there is only <strong>one image per Hardware Group</strong>
+  (<code>h3c-hw-a.mbn</code> … <code>h3c-hw-d.mbn</code>). U-Boot automatically detects the SPI NAND manufacturer/chip ID and
+  ECC mode (4-bit vs 8-bit) at boot and prints the exact chip name on the Web Rescue page.
+</p>
+
+<div class="callout">
+  <div class="callout-title">Empty <code>dmesg | grep -i nand</code> Output?</div>
+  The router's small kernel ring buffer rolls over after some uptime and evicts early boot <code>nand:</code> messages.
+  This does <strong>not</strong> matter for <code>IPQ50XX-Uboot v0.2.0+</code>. If you still want to inspect the exact chip ID
+  before flashing, reboot the router, wait ~35 seconds, and run <code>rt3000_helper.py probe</code> immediately.
+</div>
+
+<details>
+  <summary>Legacy Reference (not needed for v0.2.0+): 21-chip NAND matrix from <code>H3C-NX30-Uboot</code> v0.1.0</summary>
+  <p style="font-size:0.86rem;color:var(--muted);">
+    Earlier <code>v0.1.0</code> builds required selecting a chip- and ECC-specific binary from 84 candidates. Kept here only for reference:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Mfr:Chip ID</th><th>NAND Model</th><th>Size / Page / OOB</th><th>ECC</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">2c:15</td><td>Micron <code>MT29F1G01ABBFDWB-IT</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td></tr>
+        <tr><td class="mono">98:d2</td><td>Kioxia/Toshiba <code>TC58CYG0S3HRAIG</code></td><td>128 MiB / 2K / 128</td><td>8-bit</td></tr>
+        <tr><td class="mono">98:db</td><td>Kioxia/Toshiba <code>TC58CYG1S3HRAIJ</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td></tr>
+        <tr><td class="mono">a1:a5</td><td>Fudan <code>FM25LS01</code></td><td>128 MiB / 2K / 64 or 128</td><td>4-bit / 8-bit</td></tr>
+        <tr><td class="mono">c2:92</td><td>Macronix <code>MX35UF1GE4AC</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td></tr>
+        <tr><td class="mono">c8:11</td><td>ESMT <code>F50D1G41LB(2M)</code></td><td>128 MiB / 2K / 64</td><td>4-bit</td></tr>
+        <tr><td class="mono">c8:21 / c8:22</td><td>GigaDevice <code>GD5F1GQ5REYIH</code> / <code>GD5F2GQ5REYIH</code></td><td>128 / 256 MiB / 2K / 64</td><td>4-bit</td></tr>
+        <tr><td class="mono">c8:41</td><td>GigaDevice <code>GD5F1GQ5REYIG</code></td><td>128 MiB / 2K / 128</td><td>4-bit / 8-bit</td></tr>
+        <tr><td class="mono">c8:45 / c8:81</td><td>GigaDevice <code>GD5F4GQ6REYIGY</code> / <code>GD5F1GM7REYIG</code></td><td>128 MiB / 2K / 128</td><td>4-bit / 8-bit</td></tr>
+        <tr><td class="mono">c8:c1 / c8:c9</td><td>GigaDevice <code>GD5F1GQ4RE9IG</code> / <code>GD5F1GQ4RE9IH</code></td><td>128 MiB / 2K / 128 or 64</td><td>8-bit / 4-bit</td></tr>
+        <tr><td class="mono">e5:21 / e5:72 / e5:a4</td><td>Dosilicon <code>DS35M1GA-IB</code> / <code>DS35Q2GA</code> / <code>DS35M4GM</code></td><td>128 MiB / 2K / 64 or 128</td><td>4-bit / 8-bit</td></tr>
+        <tr><td class="mono">ef:ba / ef:bc / ef:bf</td><td>Winbond <code>W25N01GWZEIG</code> / <code>W25N01JW</code> / <code>W25N02JWZEIF</code></td><td>128 / 256 MiB / 2K / 64</td><td>4-bit</td></tr>
+      </tbody>
+    </table>
+  </div>
+</details>

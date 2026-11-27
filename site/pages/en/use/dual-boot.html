@@ -1,0 +1,65 @@
+<h1>Dual-Boot Switching &amp; Future Upgrades</h1>
+<p class="lead">
+  Switch between your stock H3C firmware (Slot 1) and OpenWrt 21.02.7 (Slot 2) using only the hardware <strong>RESET</strong> button—no PC required—and keep OpenWrt up to date safely.
+</p>
+
+<h2 id="led-timing">Interactive LED Dual-Boot Timing (HW-B)</h2>
+<p>
+  Hold <strong>RESET</strong> while plugging in power <em>(on HW-B/HW-C use RESET; on HW-A/HW-D Mesh/WPS also works)</em> and release based on the red LED flash count. Click any card to inspect the exact behavior:
+</p>
+
+<div class="led-grid">
+  <button type="button" class="led-btn" data-detail="Normal boot: U-Boot boots whichever slot is currently saved as default in 0:BOOTCONFIG.">
+    <div class="led-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="led-title">Before 1st flash</div>
+    <div class="led-sub">Normal default boot</div>
+  </button>
+  <button type="button" class="led-btn" data-detail="Boots Slot 1 (rootfs @ 0x00900000 — stock H3C Chaos Calmer 15.05) and sets Slot 1 as default in 0:BOOTCONFIG.">
+    <div class="led-dots"><span class="dot red"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="led-title">After 1st red flash</div>
+    <div class="led-sub">Boot Slot 1 (Stock)</div>
+  </button>
+  <button type="button" class="led-btn active" data-detail="Boots Slot 2 (rootfs_1 @ 0x03100000 — OpenWrt 21.02.7 / QSDK 11.5) and sets Slot 2 as default in 0:BOOTCONFIG.">
+    <div class="led-dots"><span class="dot red"></span><span class="dot red"></span><span class="dot"></span></div>
+    <div class="led-title">After 2nd red flash</div>
+    <div class="led-sub">Boot Slot 2 (OpenWrt)</div>
+  </button>
+  <button type="button" class="led-btn" data-detail="LED turns solid green: starts uBootKit HTTP rescue server and DHCP at http://192.168.10.1 (connect PC to LAN1 only).">
+    <div class="led-dots"><span class="dot red"></span><span class="dot red"></span><span class="dot green"></span></div>
+    <div class="led-title">After 3rd flash → Green</div>
+    <div class="led-sub">Web Rescue (192.168.10.1)</div>
+  </button>
+</div>
+<div id="led-detail" class="callout" style="margin-top:0.4rem;">
+  Boots Slot 2 (<code>rootfs_1</code> @ <code>0x03100000</code> — OpenWrt 21.02.7 / QSDK 11.5) and sets Slot 2 as default in <code>0:BOOTCONFIG</code>.
+</div>
+
+<h2 id="future-upgrades">Upgrading OpenWrt Later</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Image File</th><th>Keeps Settings?</th><th>Best For</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Inside OpenWrt (LuCI)</strong><br /><em>System → Backup / Flash Firmware</em></td>
+        <td><code>H3C-Magic-r&lt;N&gt;-HW-B-sysupgrade.bin</code><br />(or built-in <em>Online update</em>)</td>
+        <td><strong>Yes</strong> (with <em>Keep settings</em>)</td>
+        <td>Routine upgrades to future <code>r15+</code> QSDK builds inside your 40 MiB Slot 2 without touching Slot 1.</td>
+      </tr>
+      <tr>
+        <td><strong>U-Boot Web Rescue Page</strong><br />(Hold RESET through 3 red flashes)</td>
+        <td><code>*-nand-factory.ubi</code></td>
+        <td>No (clean slot write)</td>
+        <td>Clean reinstalls, recovery from a bad config, or testing another firmware family (e.g., mainline OpenWrt 24.10).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="single-slot-tradeoff">40+40 MiB Dual-Boot vs. 80 / 116 MiB Merged Layouts</h2>
+<p>
+  If you ever outgrow the 40 MiB Slot 2 overlay, you can switch to the <strong>80 MiB</strong> or <strong>116 MiB</strong> layout
+  in the uBootKit Web Rescue page's partition tab before flashing a <code>.ubi</code> image (see the
+  <a href="../hardware/partitions.html">128 MiB Partition Layout</a> diagram to compare both). Keep in mind that merging erases the stock H3C system in Slot 1, though your <code>old_firmware.7z</code> backup and Web Rescue remain available for recovery.
+</p>

@@ -1,0 +1,52 @@
+<h1>OpenWrt 21.02.7 (QSDK 11.5 mit NSS)</h1>
+<p class="lead">
+  Ziel-Firmware aus <a href="https://github.com/FlyFish-go/H3C-RT3000-Product-R1" target="_blank" rel="noopener">FlyFish-go/H3C-RT3000-Product-R1</a>:
+  OpenWrt 21.02.7 auf Basis von Qualcomm QSDK 11.5 mit voller NSS-Hardwarebeschleunigung (~940 Mbit/s Gigabit-NAT) und Argon-LuCI-Oberfläche.
+</p>
+
+<h2 id="release-files">Image-Typen (<code>.ubi</code> vs. <code>sysupgrade.bin</code>)</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Dateiname (für HW-B)</th><th>Wo flashen?</th><th>Behält Einstellungen?</th><th>Verwendungszweck</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>H3C-Magic-r14-HW-B-nand-factory.ubi</code></td>
+        <td>U-Boot-Web-Rettungsseite (<code>http://192.168.10.1</code>)</td>
+        <td>Nein (saubere Slot-Installation)</td>
+        <td>Erstinstallation in Slot 2 (<code>rootfs_1</code>) oder vollständige Wiederherstellung.</td>
+      </tr>
+      <tr>
+        <td><code>H3C-Magic-r14-HW-B-sysupgrade.bin</code></td>
+        <td>OpenWrt LuCI (<em>System → Backup / Flash Firmware</em>) oder SSH <code>sysupgrade</code></td>
+        <td><strong>Ja</strong></td>
+        <td>Reguläre Updates auf künftige <code>r15+</code>-Versionen im aktiven Slot, ohne Slot 1 zu verändern.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout">
+  <div class="callout-title">Aktuelle Releases automatisch abfragen</div>
+  Mit <code>python3 scripts/rt3000_helper.py releases --hw HW-B</code> lassen sich die neuesten Download-URLs und SHA-256-Prüfsummen direkt von GitHub abrufen.
+</div>
+
+<h2 id="defaults-and-hardening">Standardwerte &amp; Erstabsicherung</h2>
+<ul>
+  <li><strong>Weboberfläche (LuCI):</strong> <code>http://192.168.10.1/</code> (nur über LAN, Argon-Design).</li>
+  <li><strong>SSH:</strong> <code>ssh root@192.168.10.1</code> (nur über LAN, <strong>beim ersten Start ohne Root-Passwort</strong>).</li>
+  <li><strong>Standard-WLAN:</strong> <code>OpenWrt</code> (2,4 GHz) und <code>OpenWrt-5G</code> (5 GHz), WPA2-Passwort <code>12345678</code>, Ländercode <code>CN</code>.</li>
+</ul>
+
+<div class="code-block"><pre><code># Direkt nach dem ersten Start per SSH ein Root-Passwort setzen:
+ssh root@192.168.10.1
+passwd</code></pre></div>
+
+<h2 id="luci-language">LuCI-Sprache von Chinesisch auf Deutsch / Englisch umstellen</h2>
+<p>
+  Öffne <code>http://192.168.10.1/</code> im Browser, wechsle zu
+  <strong>System → System → System Properties → Language and Style</strong> (<em>系统 → 系统 → 语言和界面</em>),
+  stelle die Sprache auf <strong><code>auto</code></strong> (oder <strong>English</strong>) und klicke auf <strong>Save &amp; Apply</strong>.
+  Passe anschließend unter <strong>Network → Wireless</strong> SSIDs, Passwörter und den Ländercode an.
+</p>

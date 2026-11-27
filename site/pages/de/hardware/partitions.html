@@ -1,0 +1,112 @@
+<h1>128-MiB-SPI-NAND-Partitionslayout</h1>
+<p class="lead">
+  Exakte Flash-Aufteilung direkt aus der <code>0:MIBIB</code>-Tabelle (<code>SYS_PARTI v4</code>) dieses RT3000 decodiert:
+  <strong>21 Partitionen</strong> belegen <strong>125,00 MiB (97,66%)</strong>, ergänzt durch <strong>3,00 MiB (2,34%)</strong>
+  Reserve am Ende des Chips für die NAND-Bad-Block-Verwaltung.
+</p>
+
+<h2 id="interactive-flash-map">Interaktives 128-MiB-Flash-Diagramm</h2>
+<p>
+  Fahre mit der Maus über ein beliebiges Segment — oder eine Zeile der Tabelle darunter — bzw. klicke darauf, um exakte
+  Hex-Offsets, Blockanzahl und den Prozentanteil an den 128 MiB anzuzeigen. Über die Tabs lassen sich die optionalen
+  Einzelslot-Layouts von <code>IPQ50XX-Uboot</code> direkt vergleichen.
+</p>
+
+<div class="card">
+  <div class="flash-header">
+    <div>
+      <strong id="layout-title">128-MiB-SPI-NAND-Aufteilung</strong>
+      <div id="layout-summary" style="font-size:0.83rem;color:var(--muted);margin-top:2px;"></div>
+    </div>
+    <div class="mode-tabs" role="tablist" aria-label="Partitionslayout wählen">
+      <button type="button" class="mode-btn active" data-mode="stock">Original 40+40</button>
+      <button type="button" class="mode-btn" data-mode="m80">Zusammen 80 MiB</button>
+      <button type="button" class="mode-btn" data-mode="m116">Maximal 116 MiB</button>
+    </div>
+  </div>
+
+  <div class="bar-meta">
+    <span><strong>Gesamter 128-MiB-Chip</strong> (125,00 MiB / 97,66% partitioniert · 3,00 MiB / 2,34% Reserve)</span>
+    <span class="mono">0x00000000 → 0x08000000</span>
+  </div>
+  <div id="full-bar" class="flash-bar" role="group" aria-label="Vollständige 128-MiB-Aufteilung"></div>
+  <div class="bar-ticks mono">
+    <span>0 MiB</span>
+    <span>32 MiB (25%)</span>
+    <span>64 MiB (50%)</span>
+    <span>96 MiB (75%)</span>
+    <span>128 MiB</span>
+  </div>
+
+  <div class="zoom-divider">
+    <div class="bar-meta">
+      <span><strong>Zoom: Erste 9,00 MiB Boot-Bereich</strong> (7,03% des Chips · <code>mtd0</code>–<code>mtd14</code>)</span>
+      <span class="mono">0x00000000 → 0x00900000</span>
+    </div>
+    <div id="boot-bar" class="flash-bar boot-bar" role="group" aria-label="Erste 9 MiB Boot-Partitionen"></div>
+    <div class="bar-meta" style="margin-top:0.38rem;margin-bottom:0;">
+      <span>Weißer Balken unten in <code>APPSBL</code> / <code>APPSBL_1</code> zeigt die tatsächliche Größe von <code>h3c-hw-b.mbn</code> (628,2 KiB = 49,1% des Slots).</span>
+      <span><strong>uBootKit:</strong> 2,50 MiB (1,95%)</span>
+    </div>
+  </div>
+
+  <div class="inspector" aria-live="polite">
+    <div class="inspector-top">
+      <div class="inspector-id">
+        <span id="insp-swatch" class="swatch"></span>
+        <strong id="insp-title" class="mono">0:APPSBL</strong>
+        <span id="insp-mtd" class="pill mono">mtd11</span>
+      </div>
+      <div id="insp-metrics" class="inspector-metrics mono"></div>
+    </div>
+    <div class="inspector-bottom">
+      <span id="insp-desc"></span>
+      <span id="insp-range" class="mono"></span>
+    </div>
+  </div>
+
+  <div id="legend" class="legend-grid"></div>
+</div>
+
+<h2 id="all-21-partitions">Vollständige Partitionstabelle (21 Partitionen + Reserve)</h2>
+<p>
+  Jede Zeile ist bidirektional mit dem Diagramm synchronisiert. U-Boot wird in den hervorgehobenen Partitionen
+  <code>mtd11</code> (<code>0:APPSBL</code>) und <code>mtd12</code> (<code>0:APPSBL_1</code>) installiert.
+</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>MTD</th>
+        <th>Name</th>
+        <th>Adressbereich</th>
+        <th class="num">Größe</th>
+        <th class="num">% von 128 MiB</th>
+        <th>Funktion</th>
+      </tr>
+    </thead>
+    <tbody>
+{{PARTITION_ROWS}}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2">Gesamt (21 Partitionen + Reserve)</td>
+        <td class="mono">0x00000000–0x08000000</td>
+        <td class="num">128.00 MiB</td>
+        <td class="num">100.00%</td>
+        <td>125,00 MiB (97,66%) partitioniert · 3,00 MiB (2,34%) BBT-Reserve</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<h2 id="optional-merged-layouts">Optionale zusammengeführte Layouts</h2>
+<p>
+  Das Standardlayout <strong>40 + 40 MiB</strong> behält die originale H3C-Firmware in Slot 1, während OpenWrt in Slot 2 läuft.
+  Wer mehr Platz für große Pakete benötigt (z. B. OpenClash, PassWall, Tailscale), kann auf der uBootKit-Rettungsseite zwei
+  Einzelslot-Layouts aus <code>u-boot-2016/lib/rt3000_b_layout.c</code> wählen:
+</p>
+<ul>
+  <li><strong>80 MiB (<code>83.886.080 B</code> / 62,50%):</strong> Vereinigt <code>rootfs</code> + <code>rootfs_1</code> und lässt Herstellerpartitionen unangetastet.</li>
+  <li><strong>Maximal 116 MiB (<code>121.634.816 B</code> / 90,63%):</strong> Fasst <code>rootfs</code>, <code>rootfs_1</code>, <code>pdt_data</code>, <code>pdt_data_1</code>, <code>exp</code> und <code>plugin</code> zu einem 116-MiB-UBI-Volume zusammen, während die ersten 9 MiB (Bootloader + ART) unverändert bleiben.</li>
+</ul>

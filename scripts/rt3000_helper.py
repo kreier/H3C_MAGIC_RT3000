@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
-H3C Magic RT3000 helper for a Linux host on the same LAN (e.g. 192.168.10.3).
+H3C Magic RT3000 helper v0.1.0 for a Linux host on the same LAN (e.g. 192.168.10.3).
+
+Compatible with OpenWrt 21.02.7 / QSDK 11.5 r14 and future FlyFish-go releases,
+as well as H3C-NX30-Uboot (v0.1.0) and IPQ50XX-Uboot (v0.2.0+).
 
 Automates safe, repetitive steps over Telnet (192.168.10.1:23) and HTTP:
   - probe          : Read-only hardware, CDT machid, ART 5G FEM, NAND ID/ECC, and BOOTCONFIG probe.
-                     Outputs exact H3C-NX30-Uboot v0.1.0, IPQ50XX-Uboot v0.2.0, and OpenWrt image names.
+                     Outputs matching H3C-NX30-Uboot, IPQ50XX-Uboot, and OpenWrt image names.
   - inspect-backup : Offline analysis of an existing MTD .7z backup (e.g. firmware/old_firmware.7z).
+  - releases       : Query GitHub for the latest OpenWrt (r14 / future) and U-Boot release assets.
   - backup         : Stream mtd0..mtd15 from router to local machine via nc, verify MD5/sizes, optional .7z.
   - serve          : Extract .7z/.zip (optional), compute SHA-256, serve over HTTP on 192.168.10.3,
-                     and print exact router-side wget/verify/flash commands.
+                     and print exact router-side commands for .mbn, .ubi, or sysupgrade .bin files.
 
 Uses Python 3 standard library only (no pip dependencies).
 """
@@ -17,6 +21,7 @@ import argparse
 import functools
 import hashlib
 import http.server
+import json
 import os
 import re
 import select
@@ -28,7 +33,16 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import zipfile
+
+__version__ = "0.1.0"
+
+DEFAULT_FIRMWARE_RELEASE = "r14"
+UPSTREAM_FIRMWARE_REPO = "FlyFish-go/H3C-RT3000-Product-R1"
+UPSTREAM_UBOOT_REPO = "FlyFish-go/IPQ50XX-Uboot"
+UPSTREAM_LEGACY_UBOOT_REPO = "FlyFish-go/H3C-NX30-Uboot"
 
 # Complete 21-entry NAND table from FlyFish-go/H3C-NX30-Uboot uboot-v0.1.0 CANDIDATES.json
 # Key: (mfr_hex, chip_hex, ecc_bits) -> (model, folder_suffix, expected_oob)
@@ -213,17 +227,71 @@ def classify_hw_group(machid, art_group):
     return None, f"Unknown machid {hex(machid) if machid is not None else 'None'}"
 
 
-def print_recommendations(hw_group, nand_mfr=None, nand_chip=None, ecc=None, oob=None):
+def fetch_github_latest_release(repo: str, timeout: float = 10.0):
+    """Fetch latest release metadata from GitHub Releases API using stdlib urllib."""
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"rt3000-helper/{__version__}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def fetch_github_releases(repo: str, limit: int = 5, timeout: float = 10.0):
+    """Fetch recent releases from GitHub Releases API (handles repos without a 'latest' release)."""
+    url = f"https://api.github.com/repos/{repo}/releases?per_page={limit}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"rt3000-helper/{__version__}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def resolve_firmware_release(requested: str = None, check_latest: bool = False):
+    """Return (tag, note) for the OpenWrt firmware release (works for r14 and future rN releases)."""
+    if requested:
+        return requested, "specified via --release"
+    if check_latest:
+        try:
+            rel = fetch_github_latest_release(UPSTREAM_FIRMWARE_REPO)
+            tag = rel.get("tag_name")
+            if tag:
+                return tag, f"latest from {UPSTREAM_FIRMWARE_REPO}"
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as exc:
+            print(f"  [!] Could not query GitHub latest release ({exc}); falling back to {DEFAULT_FIRMWARE_RELEASE}.")
+    return DEFAULT_FIRMWARE_RELEASE, f"default (pass --release r<N> or --check-latest for newer releases)"
+
+
+def print_recommendations(
+    hw_group,
+    nand_mfr=None,
+    nand_chip=None,
+    ecc=None,
+    oob=None,
+    fw_release=None,
+    check_latest=False,
+):
     print("\n=== Recommended Images ===")
     if not hw_group:
         print("  [!] Hardware group could NOT be determined unambiguously. Do NOT flash until confirmed.")
         return
 
+    tag, tag_note = resolve_firmware_release(fw_release, check_latest=check_latest)
     group_lower = hw_group.lower()
     print(f"  Detected Hardware Group : {hw_group}")
-    print(f"  OpenWrt 21.02.7 (r14)   : H3C-Magic-r14-{hw_group}-nand-factory.ubi  (first install via rescue page)")
-    print(f"                            H3C-Magic-r14-{hw_group}-sysupgrade.bin    (later LuCI upgrades)")
-    print(f"  IPQ50XX-Uboot v0.2.0    : h3c-{group_lower}.mbn  (auto-detects NAND/ECC at boot)")
+    print(f"  Firmware Release        : {tag} ({tag_note})")
+    print(f"  OpenWrt 21.02.7 (QSDK)  : H3C-Magic-{tag}-{hw_group}-nand-factory.ubi  (first install via rescue page)")
+    print(f"                            H3C-Magic-{tag}-{hw_group}-sysupgrade.bin    (later LuCI / CLI upgrades)")
+    print(f"                            Pattern for future releases: H3C-Magic-<release>-{hw_group}-*")
+    print(f"  IPQ50XX-Uboot (v0.2.0+) : h3c-{group_lower}.mbn  (auto-detects NAND/ECC at boot)")
 
     if nand_mfr and nand_chip and ecc:
         key = (nand_mfr.lower(), nand_chip.lower(), int(ecc))
@@ -237,6 +305,55 @@ def print_recommendations(hw_group, nand_mfr=None, nand_chip=None, ecc=None, oob
             print(f"  [!] H3C-NX30-Uboot v0.1.0: No exact match for ID {nand_mfr}:{nand_chip} with ECC{ecc}!")
     else:
         print("  H3C-NX30-Uboot v0.1.0   : Run `probe` on the live router to read NAND ID and ECC from dmesg/sysfs.")
+
+
+def cmd_releases(args):
+    hw = args.hw.upper() if args.hw else None
+    hw_lower = hw.lower() if hw else None
+
+    print(f"=== Latest Upstream OpenWrt / QSDK Release ({UPSTREAM_FIRMWARE_REPO}) ===")
+    try:
+        fw_rel = fetch_github_latest_release(UPSTREAM_FIRMWARE_REPO)
+        tag = fw_rel.get("tag_name", "unknown")
+        print(f"  Tag : {tag}  ({fw_rel.get('html_url', '')})")
+        for asset in fw_rel.get("assets", []):
+            name = asset.get("name", "")
+            if hw and hw not in name and "SHA256" not in name.upper():
+                continue
+            size = asset.get("size", 0)
+            digest = asset.get("digest", "")
+            print(f"    - {name} ({size:,} bytes)  {digest}")
+            print(f"      {asset.get('browser_download_url', '')}")
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        print(f"  [!] Failed to fetch {UPSTREAM_FIRMWARE_REPO}: {exc}")
+
+    print(f"\n=== Latest Upstream U-Boot Release ({UPSTREAM_UBOOT_REPO}) ===")
+    try:
+        ub_rels = fetch_github_releases(UPSTREAM_UBOOT_REPO, limit=10)
+        # Prefer the newest non-prerelease release that contains h3c-hw-*.mbn assets
+        chosen = None
+        for rel in ub_rels:
+            assets = rel.get("assets", [])
+            if any(a.get("name", "").startswith("h3c-hw-") for a in assets):
+                chosen = rel
+                break
+        if not chosen and ub_rels:
+            chosen = ub_rels[0]
+        if chosen:
+            print(f"  Tag : {chosen.get('tag_name', 'unknown')}  ({chosen.get('html_url', '')})")
+            for asset in chosen.get("assets", []):
+                name = asset.get("name", "")
+                if hw_lower:
+                    if not (name.startswith(f"h3c-{hw_lower}") or "SHA256" in name.upper()):
+                        continue
+                elif not (name.startswith("h3c-hw-") or "SHA256" in name.upper()):
+                    continue
+                size = asset.get("size", 0)
+                digest = asset.get("digest", "")
+                print(f"    - {name} ({size:,} bytes)  {digest}")
+                print(f"      {asset.get('browser_download_url', '')}")
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        print(f"  [!] Failed to fetch {UPSTREAM_UBOOT_REPO}: {exc}")
 
 
 def cmd_probe(args):
@@ -324,7 +441,15 @@ def cmd_probe(args):
         f"oobsize={oob} ecc_strength={ecc}"
     )
 
-    print_recommendations(hw_group, nand_mfr, nand_chip, ecc or None, oob or None)
+    print_recommendations(
+        hw_group,
+        nand_mfr,
+        nand_chip,
+        ecc or None,
+        oob or None,
+        fw_release=args.release,
+        check_latest=args.check_latest,
+    )
 
 
 def cmd_inspect_backup(args):
@@ -372,7 +497,7 @@ def cmd_inspect_backup(args):
                 continue
             print(f"  {s}")
 
-    print_recommendations(hw_group)
+    print_recommendations(hw_group, fw_release=args.release, check_latest=args.check_latest)
 
 
 def cmd_backup(args):
@@ -505,14 +630,20 @@ def cmd_serve(args):
 
         print(f"\n=== Serving {len(files)} file(s) from http://{args.local_ip}:{args.port}/ ===")
         uboot_candidates = []
+        ubi_candidates = []
+        sysupgrade_candidates = []
         for rel, size, digest in files:
             print(f"  {digest}  {size:>10d}  {rel}")
             if rel.endswith(".mbn"):
                 uboot_candidates.append((rel, size, digest))
+            elif rel.endswith(".ubi"):
+                ubi_candidates.append((rel, size, digest))
+            elif rel.endswith("sysupgrade.bin"):
+                sysupgrade_candidates.append((rel, size, digest))
 
         if uboot_candidates:
             rel, size, digest = uboot_candidates[0]
-            print("\n=== Example Router Commands (run in debugshell on 192.168.10.1) ===")
+            print("\n=== U-Boot Flash Commands (run in debugshell on 192.168.10.1) ===")
             print(f"# (Adjust the URL path if you have multiple .mbn files above)")
             print(f"wget http://{args.local_ip}:{args.port}/{rel} -O /tmp/appsbl.mbn")
             print(f"sha256sum /tmp/appsbl.mbn  # MUST equal: {digest}")
@@ -523,6 +654,21 @@ def cmd_serve(args):
             print("# ONLY if SHA-256 above matches, write active APPSBL slot (mtd11) and verify:")
             print(f"mtd write /tmp/appsbl.mbn /dev/mtd11 && dd if=/dev/mtd11 bs=1 count={size} 2>/dev/null | sha256sum")
             print("# If both match, run: sync && reboot")
+
+        if ubi_candidates:
+            print("\n=== First-Install OpenWrt .ubi File(s) Detected ===")
+            print("# Enter U-Boot Web Rescue Page (hold Reset or Mesh/WPS on power-on, release after 3 red flashes),")
+            print("# open http://192.168.10.1, and upload the matching HW-<X> .ubi to the non-stock slot (0x3100000):")
+            for rel, _, digest in ubi_candidates:
+                print(f"  - {rel}  (sha256: {digest})")
+
+        if sysupgrade_candidates:
+            rel, _, digest = sysupgrade_candidates[0]
+            print("\n=== OpenWrt Sysupgrade .bin Commands (for future upgrades inside OpenWrt) ===")
+            print("# Upload via LuCI -> System -> Backup / Flash Firmware, OR over SSH:")
+            print(f"wget http://{args.local_ip}:{args.port}/{rel} -O /tmp/sysupgrade.bin")
+            print(f"sha256sum /tmp/sysupgrade.bin  # MUST equal: {digest}")
+            print("sysupgrade /tmp/sysupgrade.bin")
 
         handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=serve_dir)
         httpd = http.server.ThreadingHTTPServer((args.local_ip, args.port), handler)
@@ -539,17 +685,28 @@ def cmd_serve(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="H3C Magic RT3000 Linux helper (run on 192.168.10.3)")
+    parser = argparse.ArgumentParser(
+        description=f"H3C Magic RT3000 Linux helper v{__version__} (run on 192.168.10.3)"
+    )
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_probe = sub.add_parser("probe", help="Read-only Telnet probe of board group, NAND ID, ECC, and BOOTCONFIG")
     p_probe.add_argument("--host", default="192.168.10.1", help="Router IP (default: 192.168.10.1)")
     p_probe.add_argument("--port", type=int, default=23, help="Telnet port (default: 23)")
+    p_probe.add_argument("--release", help=f"Firmware release tag (e.g. {DEFAULT_FIRMWARE_RELEASE}, r15)")
+    p_probe.add_argument("--check-latest", action="store_true", help="Query GitHub for the latest firmware release tag")
     p_probe.set_defaults(func=cmd_probe)
 
     p_insp = sub.add_parser("inspect-backup", help="Offline inspection of a .7z MTD backup archive")
     p_insp.add_argument("archive", help="Path to .7z archive (e.g. firmware/old_firmware.7z)")
+    p_insp.add_argument("--release", help=f"Firmware release tag (e.g. {DEFAULT_FIRMWARE_RELEASE}, r15)")
+    p_insp.add_argument("--check-latest", action="store_true", help="Query GitHub for the latest firmware release tag")
     p_insp.set_defaults(func=cmd_inspect_backup)
+
+    p_rel = sub.add_parser("releases", help="Query GitHub for latest OpenWrt (r14/future) and U-Boot download URLs")
+    p_rel.add_argument("--hw", choices=["HW-A", "HW-B", "HW-C", "HW-D", "hw-a", "hw-b", "hw-c", "hw-d"], help="Filter assets for a specific hardware group (e.g. HW-B)")
+    p_rel.set_defaults(func=cmd_releases)
 
     p_bak = sub.add_parser("backup", help="Stream mtd0..mtd15 from router over LAN and verify MD5")
     p_bak.add_argument("--host", default="192.168.10.1", help="Router IP (default: 192.168.10.1)")

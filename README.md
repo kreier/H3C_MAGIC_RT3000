@@ -391,17 +391,20 @@ Because `192.168.10.3` is on the same LAN as the router, [`scripts/rt3000_helper
 
 ```bash
 # 1. Probe live router via Telnet (read-only): detects HW group, NAND ID, ECC,
-#    and prints the exact U-Boot & OpenWrt filenames to select
-python3 scripts/rt3000_helper.py probe --host 192.168.10.1
+#    and prints the exact U-Boot & OpenWrt filenames (use --check-latest for future r15+ releases)
+python3 scripts/rt3000_helper.py probe --host 192.168.10.1 --check-latest
 
 # 2. Or inspect an existing .7z MTD backup offline (decodes CDT, ART FEM, BOOTCONFIG, env)
 python3 scripts/rt3000_helper.py inspect-backup firmware/old_firmware.7z
 
-# 3. Automatically stream & verify mtd0..mtd15 backup from router to 192.168.10.3
+# 3. Check latest upstream OpenWrt (r14 / future updates) & U-Boot download URLs + SHA-256 digests
+python3 scripts/rt3000_helper.py releases --hw HW-B
+
+# 4. Automatically stream & verify mtd0..mtd15 backup from router to 192.168.10.3
 python3 scripts/rt3000_helper.py backup --host 192.168.10.1 --local-ip 192.168.10.3 --out ./backup_rt3000 --7z
 
-# 4. Stage a .7z/.zip or directory, print SHA-256 hashes, start HTTP server on 192.168.10.3:8899,
-#    and print exact copy-paste wget / sha256sum / safe APPSBL flash commands for debugshell
+# 5. Stage a .7z/.zip or directory, print SHA-256 hashes, start HTTP server on 192.168.10.3:8899,
+#    and print exact copy-paste wget / sha256sum / flash or sysupgrade commands
 python3 scripts/rt3000_helper.py serve ~/Downloads/<archive>.7z --local-ip 192.168.10.3 --port 8899
 ```
 

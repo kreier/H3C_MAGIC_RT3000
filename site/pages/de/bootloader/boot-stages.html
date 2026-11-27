@@ -1,0 +1,138 @@
+<h1>Qualcomm-IPQ50xx-Boot-Prozess &amp; Boot-Stufen</h1>
+<p class="lead">
+  Der 128-MiB-Flash des RT3000 beginnt an Adresse <code>0x00000000</code> mit <strong><code>0:SBL1</code> (Secondary Boot Loader 1)</strong> —
+  denn der eigentliche Systemstart erfolgt <em>nicht</em> aus dem Flash, sondern aus einem unveränderlichen Boot-ROM direkt im Qualcomm-Chip.
+</p>
+
+<h2 id="boot-stages">Die 5 Boot-Stufen (Silizium-ROM → OpenWrt)</h2>
+<p>Beim Einschalten durchläuft der IPQ5000 / IPQ5018 fünf fest definierte Stufen, wobei jede Stufe mehr Hardware initialisiert und die Kontrolle an die nächste übergibt:</p>
+
+<div class="boot-flow">
+  <div class="stage-card rom">
+    <div class="stage-num">Stufe 0<strong>PBL</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge rom">Unveränderliches Silizium-ROM (im SoC)</span>
+        <span class="stage-badge">Nicht im NAND-Flash</span>
+      </div>
+      <p>
+        Der <strong>Primary Boot Loader (PBL)</strong> ist fest im Silizium der Qualcomm-CPU einmaskiert.
+        Beim Einschalten liest PBL die Boot-Konfigurationspins (SPI-NAND vs. NOR/eMMC), initialisiert einen minimalen SPI-NAND-Controller
+        und lädt <code>0:SBL1</code> ab Flash-Offset <code>0x00000000</code> in das interne Chip-SRAM (OCIMEM).
+        Ist der Flash leer oder <code>0:SBL1</code> defekt, fällt PBL in den Qualcomm Emergency Download Mode (EDL / 9008) zurück.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <div class="stage-num">Stufe 1<strong>0:SBL1</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd0 · 0x00000000 (512 KiB)</span>
+        <span class="stage-badge">Einfach vorhanden (nicht A/B-gespiegelt)</span>
+      </div>
+      <p>
+        Der <strong>Secondary Boot Loader 1</strong> ist der erste Code, der aus dem Flash geladen wird. Er liest <code>0:CDT</code> (<code>mtd8</code>)
+        und <code>0:TRAINING</code> (<code>mtd14</code>), um die externen <strong>256 MiB DDR-RAM</strong> zu initialisieren, wertet die
+        Partitionstabelle <code>0:MIBIB</code> (<code>mtd1</code>) aus und liest <code>0:BOOTCONFIG</code> / <code>0:BOOTCONFIG1</code> (<code>mtd2</code>/<code>mtd3</code>),
+        um zu bestimmen, welcher gespiegelte Slot (0 oder 1) für alle folgenden Stufen aktiv ist.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <div class="stage-num">Stufe 2<strong>0:QSEE &amp; DEVCFG</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd4–mtd7 (2,50 MiB gesamt)</span>
+        <span class="stage-badge mirror">Ausfallsicherer A/B-Spiegel</span>
+      </div>
+      <p>
+        <strong>Qualcomm Secure Execution Environment (ARM TrustZone)</strong> samt zugehöriger Hardware-Sicherheitskonfiguration (<code>0:DEVCFG</code>).
+        Wird von <code>SBL1</code> in geschützten Speicher geladen und bleibt während U-Boot und Linux aktiv, um Secure-Channel-Manager-Aufrufe (SCM)
+        für Takte, Krypto, WLAN-/NSS-Prüfungen und Hardware-Fuses auszuführen.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card uboot">
+    <div class="stage-num">Stufe 3<strong>0:APPSBL (U-Boot)</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd11 + mtd12 (2,50 MiB gesamt)</span>
+        <span class="stage-badge mirror">Ausfallsicherer A/B-Spiegel</span>
+      </div>
+      <p>
+        <strong>Applications Processor Secondary Boot Loader</strong> — hier läuft <strong>Das U-Boot</strong>
+        (unser installiertes <code>IPQ50XX-Uboot</code> / <code>uBootKit</code>). Es liest <code>0:APPSBLENV</code> (<code>mtd10</code>)
+        und <code>0:BOOTCONFIG</code>, erkennt SPI-NAND-Chip &amp; ECC-Stärke automatisch, fragt die <strong>RESET</strong>-Taste ab
+        (für Slot-1-/Slot-2-Wahl oder die Rettungsseite <code>192.168.10.1</code>) und startet den Linux-Kernel aus dem gewählten UBI-Slot.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card os">
+    <div class="stage-num">Stufe 4<strong>Linux / OpenWrt</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd15 rootfs / mtd16 rootfs_1 (40 + 40 MiB)</span>
+        <span class="stage-badge dual">Vom Nutzer wählbares Dual-Boot</span>
+      </div>
+      <p>
+        U-Boot lädt das Kernel-FIT-Image aus dem gewählten UBI-Volume (<code>rootfs</code> = Slot 1 Original-H3C oder <code>rootfs_1</code> = Slot 2 OpenWrt 21.02.7).
+        Linux bindet SquashFS + beschreibbares UBIFS-Overlay ein, lädt die WLAN-Kalibrierdaten aus <code>0:ART</code> (<code>mtd13</code>)
+        und startet NSS-Hardwarebeschleunigung sowie LuCI.
+      </p>
+    </div>
+  </div>
+</div>
+
+<h2 id="why-sbl1-is-not-mirrored">Warum der Flash mit SBL1 beginnt (und nicht gespiegelt ist)</h2>
+<ul>
+  <li><strong>Wo der Start wirklich beginnt:</strong> Da Stufe 0 (<strong>PBL</strong>) unveränderlich im ROM des Qualcomm-SoC liegt, ist das erste Programm im externen NAND-Flash erst Stufe 1 — daher der Name <em>Secondary</em> Boot Loader (<code>0:SBL1</code>).</li>
+  <li><strong>Warum es kein <code>0:SBL1_1</code> gibt:</strong> Der A/B-Selektor (<code>0:BOOTCONFIG</code>) wird erst <em>von</em> <code>SBL1</code> ausgewertet, nicht vom PBL. PBL selbst sucht nur feste Startblöcke am Anfang des NANDs (abgesichert durch NAND-Seiten-/Blockredundanz statt A/B-Partitionen). Im Normalbetrieb wird <code>0:SBL1</code> einmal ab Werk programmiert und bei einer OpenWrt-Installation niemals angefasst.</li>
+</ul>
+
+<h2 id="mirror-vs-dualboot">Bootloader-Spiegel vs. OS-Dual-Boot: Sicherheit statt Auswahlmenü</h2>
+<p>In der <a href="../hardware/partitions.html">21-Partitionen-Tabelle</a> tauchen mehrere Partitionen paarweise (<code>_1</code>) auf. Sie verfolgen zwei unterschiedliche Ziele:</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Partitions-Paare</th>
+        <th>Mechanismus</th>
+        <th>Zweck</th>
+        <th>Vom Nutzer wählbar?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="uboot-row">
+        <td class="mono">0:APPSBL / 0:APPSBL_1<br />0:QSEE / 0:QSEE_1<br />0:DEVCFG / 0:DEVCFG_1<br />0:CDT / 0:CDT_1<br />0:BOOTCONFIG / BOOTCONFIG1</td>
+        <td><strong>Ausfallsicherer A/B-Spiegel</strong><br />(verwaltet durch <code>SBL1</code> &amp; <code>BOOTCONFIG</code>)</td>
+        <td>
+          <strong>Ausfallsicherheit &amp; stromausfallsichere OTA-Updates.</strong> Bei einem Bootloader-Update schreibt der Updater zuerst
+          in den <em>inaktiven</em> Slot, prüft das Ergebnis und schaltet erst danach das Selektor-Bit in <code>BOOTCONFIG</code> um.
+          Bricht der Strom ab oder fällt ein Flash-Block aus, startet der Router über den intakten Spiegel statt zu bricken.
+        </td>
+        <td><strong>Nein</strong> — beide Slots enthalten im Normalbetrieb identische Kopien (deshalb flasht unsere Anleitung erst <code>mtd12</code>, prüft SHA-256 und spiegelt dann nach <code>mtd11</code>).</td>
+      </tr>
+      <tr>
+        <td class="mono">rootfs / rootfs_1</td>
+        <td><strong>Dual-System-OS-Slots</strong><br />(umschaltbar über <code>IPQ50XX-Uboot</code>)</td>
+        <td>
+          Ermöglicht <strong>zwei völlig verschiedene Betriebssysteme</strong> parallel (z. B. Original-H3C-Firmware in Slot 1
+          und OpenWrt 21.02.7 in Slot 2) mit einfachem Wechsel beim Start.
+        </td>
+        <td><strong>Ja</strong> — über das <a href="../use/dual-boot.html">RESET-Tasten-LED-Timing</a> oder die U-Boot-Web-Rettungsseite.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout tip">
+  <div class="callout-title">Warum wir immer zuerst <code>mtd12</code> und erst danach <code>mtd11</code> schreiben</div>
+  Da <code>0:BOOTCONFIG</code> im Auslieferungszustand auf Slot <code>0</code> (<code>mtd11</code> / <code>0:APPSBL</code>) zeigt,
+  schreiben wir zuerst den <em>inaktiven</em> Spiegel <code>mtd12</code> (<code>0:APPSBL_1</code>) und prüfen dessen Rücklese-SHA-256,
+  während der funktionierende Bootloader unberührt bleibt. Erst nach 100%-Prüfung wird dasselbe Image nach <code>mtd11</code> gespiegelt.
+</div>

@@ -1,0 +1,138 @@
+<h1>Qualcomm IPQ50xx Boot Process &amp; Stages</h1>
+<p class="lead">
+  The RT3000's 128 MiB flash starts at <code>0x00000000</code> with <strong><code>0:SBL1</code> (Secondary Boot Loader 1)</strong> —
+  because the router does <em>not</em> actually start booting from flash. Execution begins inside immutable Boot ROM baked into the Qualcomm silicon itself.
+</p>
+
+<h2 id="boot-stages">The 5 Boot Stages (Silicon ROM → OpenWrt)</h2>
+<p>When power is applied, the IPQ5000 / IPQ5018 walks through five strictly ordered stages, each initializing more of the hardware and handing off control to the next:</p>
+
+<div class="boot-flow">
+  <div class="stage-card rom">
+    <div class="stage-num">Stage 0<strong>PBL</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge rom">Immutable Silicon Boot ROM (inside SoC)</span>
+        <span class="stage-badge">Not on NAND flash</span>
+      </div>
+      <p>
+        <strong>Primary Boot Loader (PBL)</strong> is mask-programmed permanently inside the Qualcomm CPU silicon.
+        At power-on, PBL reads hardware boot-strap pins (SPI NAND vs. NOR/eMMC), brings up a minimal SPI-NAND controller,
+        and loads <code>0:SBL1</code> from flash offset <code>0x00000000</code> into internal on-chip SRAM (OCIMEM).
+        If flash is empty or <code>0:SBL1</code> is corrupt, PBL falls back to Qualcomm Emergency Download (EDL / 9008).
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <div class="stage-num">Stage 1<strong>0:SBL1</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd0 · 0x00000000 (512 KiB)</span>
+        <span class="stage-badge">Single copy (not A/B mirrored)</span>
+      </div>
+      <p>
+        <strong>Secondary Boot Loader 1</strong> is the first code read from flash. It reads <code>0:CDT</code> (<code>mtd8</code>) and
+        <code>0:TRAINING</code> (<code>mtd14</code>) to initialize the external <strong>256 MiB DDR RAM</strong>, parses the
+        <code>0:MIBIB</code> (<code>mtd1</code>) partition table, and reads <code>0:BOOTCONFIG</code> / <code>0:BOOTCONFIG1</code> (<code>mtd2</code>/<code>mtd3</code>)
+        to know which mirrored slot (0 or 1) to load for every subsequent stage.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <div class="stage-num">Stage 2<strong>0:QSEE &amp; DEVCFG</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd4–mtd7 (2.50 MiB total)</span>
+        <span class="stage-badge mirror">Fail-safe A/B mirror</span>
+      </div>
+      <p>
+        <strong>Qualcomm Secure Execution Environment (ARM TrustZone)</strong> plus its hardware security configuration (<code>0:DEVCFG</code>).
+        Loaded by <code>SBL1</code> into protected memory, QSEE remains resident while U-Boot and Linux run, serving Secure Channel Manager (SCM) calls
+        for clocks, crypto, Wi-Fi/NSS authentication, and fuse access.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card uboot">
+    <div class="stage-num">Stage 3<strong>0:APPSBL (U-Boot)</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd11 + mtd12 (2.50 MiB total)</span>
+        <span class="stage-badge mirror">Fail-safe A/B mirror</span>
+      </div>
+      <p>
+        <strong>Applications Processor Secondary Boot Loader</strong> — this is where <strong>Das U-Boot</strong>
+        (our replacement <code>IPQ50XX-Uboot</code> / <code>uBootKit</code>) runs. It reads <code>0:APPSBLENV</code> (<code>mtd10</code>)
+        and <code>0:BOOTCONFIG</code>, auto-detects the SPI NAND chip &amp; ECC mode, checks the hardware <strong>RESET</strong> button
+        (for Slot 1 / Slot 2 switching or the <code>192.168.10.1</code> Web Rescue UI), and boots the Linux kernel from the selected UBI slot.
+      </p>
+    </div>
+  </div>
+
+  <div class="stage-card os">
+    <div class="stage-num">Stage 4<strong>Linux / OpenWrt</strong></div>
+    <div class="stage-body">
+      <div class="stage-badges">
+        <span class="stage-badge mono">mtd15 rootfs / mtd16 rootfs_1 (40 + 40 MiB)</span>
+        <span class="stage-badge dual">User-selectable Dual-Boot</span>
+      </div>
+      <p>
+        U-Boot loads the kernel FIT image from the chosen UBI volume (<code>rootfs</code> = Slot 1 Stock H3C, or <code>rootfs_1</code> = Slot 2 OpenWrt 21.02.7).
+        Linux mounts SquashFS + the writable UBIFS overlay, loads Wi-Fi radio calibration from <code>0:ART</code> (<code>mtd13</code>),
+        and starts NSS hardware offload and LuCI.
+      </p>
+    </div>
+  </div>
+</div>
+
+<h2 id="why-sbl1-is-not-mirrored">Why Flash Starts at SBL1 (and Why SBL1 Isn't Mirrored)</h2>
+<ul>
+  <li><strong>Where boot really begins:</strong> Because Stage 0 (<strong>PBL</strong>) lives inside the CPU silicon's read-only memory, the first binary stored on external NAND flash is Stage 1 — hence <em>Secondary</em> Boot Loader (<code>0:SBL1</code>).</li>
+  <li><strong>Why there is no <code>0:SBL1_1</code>:</strong> Qualcomm's A/B selector (<code>0:BOOTCONFIG</code>) is parsed <em>by</em> <code>SBL1</code>, not by PBL. PBL itself only knows how to search fixed boot blocks at the start of NAND (relying on Qualcomm's NAND page/block redundancy rather than an A/B partition table) to load <code>0:SBL1</code>. In normal router life, <code>0:SBL1</code> is written once at the factory and should never be touched when installing OpenWrt.</li>
+</ul>
+
+<h2 id="mirror-vs-dualboot">Bootloader Mirror vs. OS Dual-Boot: Safety vs. Choice</h2>
+<p>Looking at the <a href="../hardware/partitions.html">21-partition table</a>, several partitions appear in pairs (<code>_1</code>). They serve two very different purposes:</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Partition Pair</th>
+        <th>Mechanism</th>
+        <th>Purpose</th>
+        <th>User-Selectable?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="uboot-row">
+        <td class="mono">0:APPSBL / 0:APPSBL_1<br />0:QSEE / 0:QSEE_1<br />0:DEVCFG / 0:DEVCFG_1<br />0:CDT / 0:CDT_1<br />0:BOOTCONFIG / BOOTCONFIG1</td>
+        <td><strong>Fail-Safe A/B Mirror</strong><br />(managed by <code>SBL1</code> &amp; <code>BOOTCONFIG</code>)</td>
+        <td>
+          <strong>Fault-tolerance &amp; power-safe OTA updates.</strong> During a bootloader update, the updater writes the
+          <em>inactive</em> slot first, verifies it, and atomically flips the selector bit in <code>BOOTCONFIG</code>.
+          If power fails mid-write or a flash block degrades, the router falls back to the intact mirror instead of bricking.
+        </td>
+        <td><strong>No</strong> — both slots normally hold identical copies (which is why our install flashes <code>mtd12</code> first, verifies SHA-256, and then mirrors it to <code>mtd11</code>).</td>
+      </tr>
+      <tr>
+        <td class="mono">rootfs / rootfs_1</td>
+        <td><strong>Dual-System OS Slots</strong><br />(switched by <code>IPQ50XX-Uboot</code>)</td>
+        <td>
+          Lets you keep <strong>two completely different operating systems</strong> side by side (e.g., Stock H3C firmware in Slot 1
+          and OpenWrt 21.02.7 in Slot 2) and switch between them at boot.
+        </td>
+        <td><strong>Yes</strong> — via the <a href="../use/dual-boot.html">RESET button LED timing</a> or the U-Boot Web Rescue page.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout tip">
+  <div class="callout-title">Why We Always Write <code>mtd12</code> Before <code>mtd11</code></div>
+  Because <code>0:BOOTCONFIG</code> points to slot <code>0</code> (<code>mtd11</code> / <code>0:APPSBL</code>) on a stock RT3000,
+  flashing <code>mtd12</code> (<code>0:APPSBL_1</code>) first and verifying its SHA-256 readback tests NAND writes against the
+  <em>inactive</em> mirror while keeping your working bootloader untouched. Only once <code>mtd12</code> passes 100% do we mirror the same verified image to <code>mtd11</code>.
+</div>

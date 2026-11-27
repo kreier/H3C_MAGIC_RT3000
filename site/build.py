@@ -73,9 +73,14 @@ NAV_GROUPS = [
         "group": {"en": "Bootloader & Firmware", "de": "Bootloader & Firmware"},
         "items": [
             {
+                "path": "bootloader/boot-stages.html",
+                "en": ("Boot Process & Stages", "Qualcomm IPQ50xx 5-stage boot chain from Silicon PBL ROM through SBL1, QSEE, APPSBL to OpenWrt."),
+                "de": ("Boot-Prozess & Stufen", "Qualcomm-IPQ50xx-Bootkette in 5 Stufen vom Silizium-PBL-ROM über SBL1, QSEE und APPSBL bis OpenWrt."),
+            },
+            {
                 "path": "bootloader/index.html",
-                "en": ("uBootKit Origin & Slot", "Origin of IPQ50XX-Uboot (QSDK 12.5 -> uBootKit) and APPSBL/APPSBL_1 installation slots."),
-                "de": ("uBootKit-Herkunft & Aufbau", "Herkunft von IPQ50XX-Uboot (QSDK 12.5 -> uBootKit) und Installation in APPSBL/APPSBL_1."),
+                "en": ("U-Boot History & uBootKit", "Das U-Boot history (DENX, Tom Rini, Nabla), Qualcomm QSDK u-boot-2016, and IPQ50XX-Uboot."),
+                "de": ("U-Boot-Geschichte & uBootKit", "Geschichte von Das U-Boot (DENX, Tom Rini, Nabla), Qualcomm QSDK u-boot-2016 und IPQ50XX-Uboot."),
             },
             {
                 "path": "firmware/index.html",
